@@ -7,6 +7,19 @@
 > Format: one bold takeaway per bullet, then the mechanism/cause and the fix.
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
+## 2026-11-14
+- **Vitest 5 resolves imports through Vite's server-side environment: set
+  `ssr.resolve.conditions`, not only `resolve.conditions`.** The `wms-source` export condition
+  (workspace packages → TypeScript source) was set only at the top level. API tests passed
+  locally because a builder had compiled `dist/` folders, and failed in CI with "Failed to
+  resolve entry for package @wms/contracts". The db tests never caught it: they import
+  workspace packages for types only. Fix is in `apps/api/vitest.config.ts` and
+  `packages/db/vitest.config.ts`. To reproduce any "works here, fails in CI" import error,
+  move the `dist/` folders aside first.
+- **Testing through GitHub Actions is a real fallback when local Docker is down.** Push to a
+  `feat/*` branch, read the Test step, merge to `main` only when it is green. The CI runner
+  provides Docker for Testcontainers.
+
 ## 2026-11-13
 - **When Docker Desktop hangs on this machine, check free space on `C:` before anything else.**
   `docker version` timed out twice and a restart only helped for minutes. The cause was `C:` at
