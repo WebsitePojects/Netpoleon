@@ -128,7 +128,7 @@ Package manifests Task 1 must create for the other tasks (exact versions from Te
   Scripts: `dev`, `build`, `start` → `node dist/server.js`, `test`.
 - Root scripts: `lint`, `typecheck`, `test`, `build`, `format:check`.
 
-- [ ] **Step 1: Write failing tests** in `packages/config/test/config.test.ts`:
+- [x] **Step 1: Write failing tests** in `packages/config/test/config.test.ts`:
   1. `loads defaults` — given only `APP_ORIGIN`, `DATABASE_URL_STAFF`, `DATABASE_URL_PARTNER`,
      `NODE_ENV=test`: `apiHost === '127.0.0.1'`, `apiPort === 3000`, `db.staffPoolMax === 10`,
      `db.partnerPoolMax === 5`, `db.statementTimeoutMs === 5000`.
@@ -145,9 +145,9 @@ Package manifests Task 1 must create for the other tasks (exact versions from Te
   And `packages/contracts/test/contracts.test.ts`: `pageQuerySchema` rejects `limit=101` and
   `limit=0`, defaults to 25; `problemSchema` rejects an object carrying a `stack` key
   (`.strict()`).
-- [ ] **Step 2:** Coordinator runs `corepack pnpm install` then `corepack pnpm test`; expected FAIL (modules missing).
-- [ ] **Step 3: Implement** `@wms/config` and `@wms/contracts` to the interfaces above.
-- [ ] **Step 4: Infra files.**
+- [x] **Step 2:** Coordinator runs `corepack pnpm install` then `corepack pnpm test`; expected FAIL (modules missing).
+- [x] **Step 3: Implement** `@wms/config` and `@wms/contracts` to the interfaces above.
+- [x] **Step 4: Infra files.**
   - `infra/docker/Dockerfile` — multi-stage, `node:24-slim`, `corepack enable`, build with
     `pnpm install --frozen-lockfile`, runtime stage holds production deps only, `USER node`,
     `ENV NODE_ENV=production`, no secrets as `ARG`/`ENV`. One image; command chosen by compose.
@@ -169,8 +169,8 @@ Package manifests Task 1 must create for the other tasks (exact versions from Te
     `.claude/rules/vps-safety.md` comes first. `docs/RUNBOOK.md` — headings for restore, rotate a
     secret, create first admin, each marked "written when the feature lands" except local dev
     start-up, which is complete.
-- [ ] **Step 5:** Run `corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test`. Expected: all pass (db and api packages have no tests yet; Vitest is configured with `passWithNoTests` for those two only until Tasks 2–4 land).
-- [ ] **Step 6: Commit** `chore: workspace skeleton, config and contracts packages, infra, CI`.
+- [x] **Step 5:** Run `corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test`. Expected: all pass (db and api packages have no tests yet; Vitest is configured with `passWithNoTests` for those two only until Tasks 2–4 land).
+- [x] **Step 6: Commit** `chore: workspace skeleton, config and contracts packages, infra, CI`.
 
 ---
 
@@ -388,10 +388,10 @@ Switch `SW`, Router `RT`, Access Point `AP`, Server `SRV`, Laptop `LT`, Storage 
 `booking.pickup_grace_days` 3, `session.idle_hours` 12, `session.remember_days_staff` 7,
 `session.remember_days_partner` 30. **No users.**
 
-- [ ] **Step 1: `global-setup.ts`.** Start `postgres:18` with Testcontainers, generate three
+- [x] **Step 1: `global-setup.ts`.** Start `postgres:18` with Testcontainers, generate three
   random passwords with `crypto.randomBytes`, call `bootstrapRoles`, call `runMigrations` as
   the migrator, `provide` the four URLs. Tear the container down on exit.
-- [ ] **Step 2: Write the failing guarantee tests** (`packages/db/test/guarantees/`). Each
+- [x] **Step 2: Write the failing guarantee tests** (`packages/db/test/guarantees/`). Each
   connects with the role named. Assertions are on SQLSTATE via `sqlState()`.
   1. `catalogue.test.ts` — queries `pg_constraint`, `pg_indexes`, `pg_trigger`, `pg_policies`,
      `pg_proc`: `reservations_no_overlap`, `loan_items_one_open_per_asset`, triggers
@@ -432,18 +432,18 @@ Switch `SW`, Router `RT`, Access Point `AP`, Server `SRV`, Laptop `LT`, Storage 
      `23505`; request decided by its own filer → `23514`.
   9. `counters.test.ts` — 50 concurrent `next_counter('BRR-2026')` calls on separate
      connections return exactly the set 1..50; staff `SELECT` on `counters` → `42501`.
-- [ ] **Step 3: `runner.test.ts`** against a second, empty database in the same container:
+- [x] **Step 3: `runner.test.ts`** against a second, empty database in the same container:
   (a) first run applies all ten files in name order; (b) second run applies none
   (`applied.length === 0`, `skipped.length === 10`); (11b) a copy of the directory with one
   applied file's bytes changed → `MigrationChecksumError` naming that file; (c) the same file
   with only CRLF line endings → no error; (d) a file whose SQL fails leaves `schema_migrations`
   without that file and none of its statements applied.
-- [ ] **Step 4:** Run `corepack pnpm --filter @wms/db test`. Expected: FAIL — no migrations.
-- [ ] **Step 5: Implement** runner, bootstrap, CLI (`migrate` reads `DATABASE_URL_MIGRATOR`;
+- [x] **Step 4:** Run `corepack pnpm --filter @wms/db test`. Expected: FAIL — no migrations.
+- [x] **Step 5: Implement** runner, bootstrap, CLI (`migrate` reads `DATABASE_URL_MIGRATOR`;
   `bootstrap` reads `DATABASE_URL_SUPERUSER`, `WMS_MIGRATOR_PASSWORD`, `WMS_STAFF_PASSWORD`,
   `WMS_PARTNER_PASSWORD`; both print file names and counts, never a URL) and the ten migrations.
-- [ ] **Step 6:** Run `corepack pnpm --filter @wms/db test`. Expected: every test above passes.
-- [ ] **Step 7: Commit** `feat(db): schema, migration runner, role bootstrap, guarantee tests`.
+- [x] **Step 6:** Run `corepack pnpm --filter @wms/db test`. Expected: every test above passes.
+- [x] **Step 7: Commit** `feat(db): schema, migration runner, role bootstrap, guarantee tests`.
 
 ---
 
@@ -482,7 +482,7 @@ partner pool and sets both settings; `staff` uses the staff pool and sets `app.u
 `wms-partner`) and `statement_timeout` from config. A pool `error` event is logged by the
 caller-supplied handler and never crashes the process.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
   `client.test.ts`: (a) `partner` scope → `current_user` is `wms_partner` and
   `current_setting('app.partner_org_id')` equals the scope's org; (b) `staff` scope →
   `wms_staff`; (c) after a `partner` transaction commits, the next transaction on the same
@@ -495,11 +495,11 @@ caller-supplied handler and never crashes the process.
   `drift.test.ts`: for every Drizzle table, the set of (column name, `is_nullable`, base data
   type) equals `information_schema.columns` for that table; and the set of Drizzle table names
   equals the set of base tables in `public` minus `schema_migrations`.
-- [ ] **Step 2:** Run `corepack pnpm --filter @wms/db test`. Expected: the two new files FAIL.
-- [ ] **Step 3: Implement** the Drizzle table definitions (one file per migration group, enums
+- [x] **Step 2:** Run `corepack pnpm --filter @wms/db test`. Expected: the two new files FAIL.
+- [x] **Step 3: Implement** the Drizzle table definitions (one file per migration group, enums
   via `pgEnum`), `scope.ts` (type and UUID validation), `client.ts`.
-- [ ] **Step 4:** Run the package tests. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(db): typed schema, scoped transaction wrapper, drift test`.
+- [x] **Step 4:** Run the package tests. Expected: PASS.
+- [x] **Step 5: Commit** `feat(db): typed schema, scoped transaction wrapper, drift test`.
 
 ---
 
@@ -543,7 +543,7 @@ Logger redacts `req.headers.authorization`, `req.headers.cookie`, `res.headers["
 `listen`; on `SIGTERM`/`SIGINT` `app.close()` then `db.close()`, forced exit after 10 s; a
 `ConfigError` prints its `invalidKeys` and exits 1.
 
-- [ ] **Step 1: Failing tests** using `app.inject`, real database from `getTestDb()`:
+- [x] **Step 1: Failing tests** using `app.inject`, real database from `getTestDb()`:
   1. `healthz returns 200 without touching the database` (build with a `Db` pointed at a closed port).
   2. `readyz returns 200 when the database is migrated`.
   3. `readyz returns 503 problem within 1500 ms when the database is unreachable`, and a
@@ -559,24 +559,30 @@ Logger redacts `req.headers.authorization`, `req.headers.cookie`, `res.headers["
   9. `logs redact secrets` — capture the log stream, send a request with `authorization` and
      `cookie` headers; neither value appears in any log line.
   10. `malformed JSON returns a 400 problem, not a 500`.
-- [ ] **Step 2:** Run `corepack pnpm --filter @wms/api test`. Expected: FAIL.
-- [ ] **Step 3: Implement** `app.ts`, `errors.ts`, `plugins/` (error handler, request id,
+- [x] **Step 2:** Run `corepack pnpm --filter @wms/api test`. Expected: FAIL.
+- [x] **Step 3: Implement** `app.ts`, `errors.ts`, `plugins/` (error handler, request id,
   security headers), `modules/health/` (service + routes), `server.ts`. `modules/health` is the
   template every later module copies: `<name>.routes.ts`, `<name>.service.ts`, and, once it
   touches tables, `<name>.repository.ts`. `buildApp` is the only place objects are constructed
   and wired; nothing else calls `new` on a service or reaches for `Database` by import.
-- [ ] **Step 4:** Run the package tests. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(api): bootable API with health, problem errors and hardening`.
+- [x] **Step 4:** Run the package tests. Expected: PASS.
+- [x] **Step 5: Commit** `feat(api): bootable API with health, problem errors and hardening`.
 
 ---
 
 ### Task 5: Integration and falsification (coordinator)
 
-- [ ] `corepack pnpm install --frozen-lockfile && corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test` from a clean checkout. Quote the output.
-- [ ] `docker build -f infra/docker/Dockerfile .` succeeds; `docker run --rm <image> id -u` is not `0`.
-- [ ] `git ls-files | grep -E '(^|/)\.env'` prints nothing. Gitleaks over the full history is clean.
+- [x] `corepack pnpm install --frozen-lockfile && corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test` from a clean checkout. Quote the output.
+  _2026-11-14, GitHub Actions clean checkout: Test Files 17 passed (17), Tests 200 passed (200).
+  The 149 database tests were also run three times in a row with no flakes._
+- [x] `docker build -f infra/docker/Dockerfile .` succeeds; `docker run --rm <image> id -u` is not `0`.
+  _Build proven in CI. The uid check is now a CI step ("Image runs as non-root")._
+- [x] `git ls-files | grep -E '(^|/)\.env'` prints nothing. Gitleaks over the full history is clean.
 - [ ] Adversarial read of every migration and of `client.ts` against spec sections 7, 9 and 15.
-- [ ] Update `CLAUDE.md` commands and `.claude/rules/conventions.md`; check
+  _Partial: 0006, 0008, 0009, the runner and `client.ts` were read; two holes found and fixed
+  (partner audit forgery, cancelling finished requests). 0001–0005, 0007 and 0010 not yet read
+  line by line — their guarantees are covered by the attack tests, but a reviewer pass is owed._
+- [x] Update `CLAUDE.md` commands and `.claude/rules/conventions.md`; check
   `.claude/rules/architecture.md` against the code as built; append lessons.
-- [ ] Build the code map: `graphify .` from the repository root; commit
+- [x] Build the code map: `graphify .` from the repository root; commit
   `graphify-out/GRAPH_REPORT.md`, `graph.json`, `graph.html` (see `.claude/rules/agent-context.md`).

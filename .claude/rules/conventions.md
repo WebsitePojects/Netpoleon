@@ -46,7 +46,10 @@ This gate applies to every change, not just big ones. "Done" is a claim you must
   cannot disagree with the current state.
 - **Nothing is hard-deleted** once it has movement history. Assets are retired, users are
   deactivated. The audit trail is the product.
-- Build/test/deploy commands and branch strategy get added here when the scaffold lands.
+- **Branches:** work lands on a `feat/*` branch; it merges to `main` (fast-forward) only after
+  the full CI gate is green — format, lint, typecheck, tests on real Postgres, secret scan,
+  dependency audit, image build. `main` never carries code whose tests have not run.
+- Commands live in `CLAUDE.md` → Commands; keep that the single list.
 
 ## Tooling defaults
 - Prefer terse, low-token communication; write normal prose in code/commits/PRs/security notes.

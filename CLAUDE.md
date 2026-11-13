@@ -9,8 +9,14 @@ servers, laptops) through registration, stocking, borrowing, release, return, in
 redeployment, with a full audit trail. Deploy target: a Hostinger VPS.
 
 ## Commands
-None yet — the repo holds project memory only. The scaffold lands after the design in
-`docs/superpowers/specs/` is approved; add build/test/run commands here when it does.
+pnpm is not on PATH here: run it as `corepack pnpm …`.
+- `corepack pnpm install` — install (lockfile is committed; CI uses `--frozen-lockfile`)
+- `corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test`
+  — the full local gate; tests start Postgres 18 through Testcontainers and need Docker
+- `corepack pnpm build` — compile every package to `dist/`
+- `docker build -f infra/docker/Dockerfile .` — the production image
+- No local Docker? Push to a `feat/*` branch; GitHub Actions runs the same gate with Docker
+- `graphify . --update` — refresh the code map in `graphify-out/` after structural changes
 
 ## Project memory (auto-loaded)
 @.claude/rules/agent-context.md
