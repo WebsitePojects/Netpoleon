@@ -3,7 +3,7 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/lesson-guard.js" }
+          { "type": "command", "command": "node .claude/hooks/lesson-guard.cjs" }
         ]
       }
     ]

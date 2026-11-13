@@ -8,6 +8,12 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-14
+- **A root `"type": "module"` silently breaks every CommonJS `.js` script in the repo, including
+  `.claude/hooks/`.** The lesson-guard Stop hook uses `require` and crashed with "require is not
+  defined in ES module scope" from the moment the workspace `package.json` landed — the memory
+  loop was off without anyone noticing. Fix: it is now `.claude/hooks/lesson-guard.cjs`. Any
+  CommonJS helper added later must use `.cjs`. After touching `package.json`, run
+  `node .claude/hooks/lesson-guard.cjs` and check exit 0.
 - **Vitest 5 resolves imports through Vite's server-side environment: set
   `ssr.resolve.conditions`, not only `resolve.conditions`.** The `wms-source` export condition
   (workspace packages → TypeScript source) was set only at the top level. API tests passed

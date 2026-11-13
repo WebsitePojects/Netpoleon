@@ -19,7 +19,7 @@ This gate applies to every change, not just big ones. "Done" is a claim you must
 ## The self-improvement loop
 1. **Learn from every mistake.** When a bug, gotcha, or wrong assumption surfaces — especially
    after fixing one — append a concise entry to `.claude/rules/lessons.md` (newest on top, dated).
-   A Stop hook (`.claude/hooks/lesson-guard.js`) backstops this: if a session changed code and
+   A Stop hook (`.claude/hooks/lesson-guard.cjs`) backstops this: if a session changed code and
    didn't update `lessons.md`, it asks for the lesson before stopping.
 2. **CLAUDE.md stays a lean index.** Durable knowledge lives in `.claude/rules/*` and is pulled
    in via `@import`. Don't grow CLAUDE.md — grow the rule files.

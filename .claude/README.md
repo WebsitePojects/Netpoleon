@@ -11,7 +11,7 @@ CLAUDE.md                 # root index — overview + @imports the rules below
 .claude/
   README.md               # this file
   hooks/
-    lesson-guard.js       # Stop hook: enforces lesson capture after code changes
+    lesson-guard.cjs       # Stop hook: enforces lesson capture after code changes
   rules/                  # canonical, domain-split source of truth (all @imported)
     conventions.md              # workflow + the self-improvement loop
     domain.md                   # what the client proposal commits us to
