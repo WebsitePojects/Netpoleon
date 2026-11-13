@@ -8,6 +8,5 @@ export default defineConfig({
     globalSetup: ['../../packages/db/test/global-setup.ts'],
     hookTimeout: 180_000,
     testTimeout: 30_000,
-    passWithNoTests: true,
   },
 });

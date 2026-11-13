@@ -8,6 +8,5 @@ export default defineConfig({
     // Covers pulling and starting a Postgres container on a cold machine.
     hookTimeout: 180_000,
     testTimeout: 30_000,
-    passWithNoTests: true,
   },
 });
