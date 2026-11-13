@@ -58,3 +58,8 @@ These hold even if application code is wrong. Each has an attack test in
 - Side effects (email, notifications) are written to `outbox` inside the transaction. Nothing
   is sent from a request handler.
 - "Today" is Asia/Manila, stated in the query. Containers run in UTC.
+- **Never insert into `assets` with Drizzle's `insert()`.** Drizzle names every column and sends
+  `default` for the ones you omit, and Postgres checks privilege on every named column — so the
+  statement names `status` and fails with 42501 by design. The asset repository inserts with
+  explicit SQL listing only the granted columns, then inserts the `registered` movement in the
+  same transaction.

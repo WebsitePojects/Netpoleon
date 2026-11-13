@@ -94,11 +94,15 @@ describe('database catalogue', () => {
     );
     expect(flags).toEqual([{ enabled: true }]);
 
-    const { rows: policies } = await db.query<{ roles: string[] }>(
-      `SELECT roles FROM pg_policies WHERE schemaname = 'public' AND tablename = $1`,
+    // pg_policies.roles is name[], which node-postgres does not parse into an array; unnest it
+    // in SQL so each role arrives as its own text value.
+    const { rows: policies } = await db.query<{ role: string }>(
+      `SELECT unnest(roles)::text AS role
+         FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = $1`,
       [table],
     );
-    const roles = policies.flatMap((policy) => policy.roles);
+    const roles = policies.map((policy) => policy.role);
     expect(roles).toContain('wms_partner');
     expect(roles).toContain('wms_staff');
   });
