@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.impeccable
+docs
+**/node_modules
+**/dist
+**/coverage
+**/test
+**/*.log
+**/*.tsbuildinfo
+**/.env*
+infra

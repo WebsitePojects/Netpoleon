@@ -1,0 +1,8 @@
+# Lockfile is machine-written; the rest is project memory and planning docs
+# owned by the coordinator, not subject to code formatting.
+pnpm-lock.yaml
+.claude
+.impeccable
+CLAUDE.md
+AGENTS.md
+docs/superpowers

@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Install scripts are denied by default. These four are optional native
+# accelerators or version checks; every one has a pure-JS or prebuilt-binary path.
+allowBuilds:
+  cpu-features: false
+  esbuild: false
+  protobufjs: false
+  ssh2: false

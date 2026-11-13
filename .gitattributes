@@ -1,0 +1,2 @@
+# LF everywhere: the migration runner checksums file bytes and shell/Docker files break on CRLF.
+* text=auto eol=lf

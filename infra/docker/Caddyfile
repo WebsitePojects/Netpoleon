@@ -1,0 +1,7 @@
+# Used only when the server has no web server of its own (compose profile "proxy").
+# Caddy obtains and renews the TLS certificate for WMS_DOMAIN automatically and adds the
+# X-Forwarded-For header the API's trust-proxy setting relies on.
+{$WMS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:3000
+}

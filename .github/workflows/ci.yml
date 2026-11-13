@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# Read-only by default; a job that needs more must say so.
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  # SHA-256 of gitleaks_8.30.1_linux_x64.tar.gz, from the release's checksums file.
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The secret scan reads the whole history, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      # Database tests start PostgreSQL through Testcontainers; the runner provides Docker.
+      - name: Test
+        run: pnpm test
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf gitleaks.tar.gz gitleaks
+          rm gitleaks.tar.gz
+
+      # --redact keeps a leaked value out of the CI log it would otherwise be copied into.
+      - name: Scan history for secrets
+        run: ./gitleaks git --config .gitleaks.toml --redact --no-banner --verbose
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod
+
+      # Build only; nothing is pushed from CI at this stage.
+      - name: Build image
+        run: docker build -f infra/docker/Dockerfile -t wms-ci:${{ github.sha }} .

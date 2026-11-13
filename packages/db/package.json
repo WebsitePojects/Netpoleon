@@ -1,0 +1,31 @@
+{
+  "name": "@wms/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "wms-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "bootstrap": "tsx --conditions=wms-source src/migrate/cli.ts bootstrap",
+    "build": "tsc -p tsconfig.build.json",
+    "migrate": "tsx --conditions=wms-source src/migrate/cli.ts migrate",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@wms/config": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "12.2.1",
+    "@types/pg": "8.23.1",
+    "testcontainers": "12.2.1",
+    "tsx": "4.23.15"
+  }
+}

@@ -1,0 +1,149 @@
+# Production stack. Every secret comes from the environment (an env file kept on the server,
+# outside the repository). A missing required variable stops `docker compose` with its name
+# instead of starting a service with an empty password.
+#
+#   docker compose --env-file /opt/wms/wms.env -f infra/docker/compose.prod.yml up -d
+#
+# Start order: postgres healthy -> migrate (bootstrap roles, apply migrations, exit 0) -> api.
+# The proxy service is opt-in (`--profile proxy`): use it only when the server has no web
+# server of its own; otherwise the existing Nginx forwards to 127.0.0.1:${API_PORT}.
+name: wms
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  tmpfs: [/tmp]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '5'
+
+services:
+  postgres:
+    <<: *hardened
+    image: postgres:18
+    # The entrypoint starts as root, fixes data-directory ownership, then drops to the
+    # postgres user. It needs exactly these capabilities and nothing else.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-wms}
+    # PostgreSQL 18 images keep the data directory under a versioned path inside
+    # /var/lib/postgresql, so the volume mounts one level higher than in older images.
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [backend]
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # One-shot: creates or refreshes the three database roles, then applies migrations.
+  # It is the only service that holds the superuser and migrator credentials.
+  migrate:
+    <<: *hardened
+    image: ${WMS_IMAGE:?WMS_IMAGE is required (pin an image digest)}
+    restart: 'no'
+    command:
+      - sh
+      - -c
+      - node packages/db/dist/migrate/cli.js bootstrap && node packages/db/dist/migrate/cli.js migrate
+    environment:
+      DATABASE_URL_SUPERUSER: postgres://postgres:${POSTGRES_SUPERUSER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+      DATABASE_URL_MIGRATOR: postgres://wms_migrator:${WMS_MIGRATOR_PASSWORD:?WMS_MIGRATOR_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-wms}
+      WMS_MIGRATOR_PASSWORD: ${WMS_MIGRATOR_PASSWORD:?}
+      WMS_STAFF_PASSWORD: ${WMS_STAFF_PASSWORD:?WMS_STAFF_PASSWORD is required}
+      WMS_PARTNER_PASSWORD: ${WMS_PARTNER_PASSWORD:?WMS_PARTNER_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    mem_limit: 256m
+    cpus: 0.5
+
+  api:
+    <<: *hardened
+    image: ${WMS_IMAGE:?}
+    environment:
+      NODE_ENV: production
+      # Inside the container the process must listen on all interfaces so the published port
+      # can reach it; API_IN_CONTAINER lets the config loader accept that. Exposure to the
+      # outside is decided only by the loopback-pinned port mapping below.
+      API_HOST: 0.0.0.0
+      API_PORT: '3000'
+      API_IN_CONTAINER: 'true'
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: ${TRUST_PROXY:-loopback,uniquelocal}
+      DATABASE_URL_STAFF: postgres://wms_staff:${WMS_STAFF_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+      DATABASE_URL_PARTNER: postgres://wms_partner:${WMS_PARTNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+    # Docker bypasses the host firewall for published ports, so this is bound to loopback.
+    ports:
+      - '127.0.0.1:${API_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # An internal network cannot publish ports, so the api also joins `edge`.
+    networks: [backend, edge]
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 15s
+
+  proxy:
+    <<: *hardened
+    image: caddy:2
+    profiles: [proxy]
+    # Binding ports 80 and 443 is the one privilege Caddy needs.
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      WMS_DOMAIN: ${WMS_DOMAIN:-localhost}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:2019/config/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  # No route out and no published ports: the database is reachable only from this project.
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

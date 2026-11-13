@@ -1,0 +1,29 @@
+# Local development database only. The API and tests run on the host.
+#
+#   POSTGRES_PASSWORD=<generated value> docker compose -f infra/docker/compose.dev.yml up -d
+#
+# The password is read from the shell, never from a file in the repository.
+name: wms-dev
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the shell}
+      POSTGRES_DB: wms
+    # Loopback only: Docker bypasses the host firewall for published ports.
+    ports:
+      - '127.0.0.1:5432:5432'
+    # PostgreSQL 18 images keep the data directory under a versioned path inside
+    # /var/lib/postgresql, so the volume mounts one level higher than in older images.
+    volumes:
+      - wms_dev_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d wms']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  wms_dev_pgdata:
