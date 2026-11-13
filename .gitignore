@@ -35,4 +35,11 @@ Thumbs.db
 
 # --- Claude Code: shared memory is tracked, personal overrides are not ---
 .claude/settings.local.json
-graphify-out/
+.impeccable/
+
+# --- Code map: the three shared outputs are tracked; the rest is per-machine cache
+# and files holding absolute local paths. See .claude/rules/agent-context.md.
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/graph.json
+!graphify-out/graph.html

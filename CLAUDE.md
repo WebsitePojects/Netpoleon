@@ -13,8 +13,10 @@ None yet — the repo holds project memory only. The scaffold lands after the de
 `docs/superpowers/specs/` is approved; add build/test/run commands here when it does.
 
 ## Project memory (auto-loaded)
+@.claude/rules/agent-context.md
 @.claude/rules/conventions.md
 @.claude/rules/domain.md
+@.claude/rules/architecture.md
 @.claude/rules/idempotency-concurrency.md
 @.claude/rules/engineering-standards.md
 @.claude/rules/vps-safety.md

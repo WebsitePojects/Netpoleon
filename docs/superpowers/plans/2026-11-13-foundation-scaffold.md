@@ -33,6 +33,14 @@ created here so the schema is reviewed once, whole.
 - Comments explain why, never what. No dead code, no TODO left behind.
 - A builder touches only the paths listed in its task. Nobody but Task 1 edits a `package.json`,
   and nobody but the coordinator runs `pnpm install`.
+- **Object-oriented, small, no spaghetti (project owner's instruction).** Anything that holds
+  state or a dependency is a class with constructor injection and `private readonly` fields:
+  one class, one responsibility, one file. Pure stateless helpers stay plain functions — a
+  class with no state is noise. No inheritance deeper than one level; compose instead. No
+  module-level mutable state, no singletons reached by import. Dependencies point one way:
+  routes → services → repositories → `Database`. Fewer lines is better **only** when the result
+  is still obvious to a stranger; never compress by cleverness. Where this section and a
+  function signature in a task disagree, the class shape given in this plan wins.
 
 ## Review Focus
 
@@ -178,13 +186,19 @@ Package manifests Task 1 must create for the other tasks (exact versions from Te
 // packages/db/src/migrate/runner.ts
 export interface MigrationResult { applied: string[]; skipped: string[] }
 export class MigrationChecksumError extends Error { readonly file: string }
-export function runMigrations(opts: { connectionString: string; dir: string }): Promise<MigrationResult>;
+export class MigrationRunner {
+  constructor(opts: { connectionString: string; dir: string });
+  run(): Promise<MigrationResult>;
+}
 // packages/db/src/migrate/bootstrap-roles.ts
-export function bootstrapRoles(opts: {
-  superuserUrl: string;
-  passwords: { migrator: string; staff: string; partner: string };
-  database: string;
-}): Promise<void>; // idempotent: CREATE ROLE if absent, ALTER ROLE ... PASSWORD always
+export class RoleBootstrapper {
+  constructor(opts: {
+    superuserUrl: string;
+    passwords: { migrator: string; staff: string; partner: string };
+    database: string;
+  });
+  run(): Promise<void>; // idempotent: CREATE ROLE if absent, ALTER ROLE ... PASSWORD always
+}
 
 // packages/db/test/helpers.ts  (also consumed by Tasks 3 and 4)
 export interface TestDb { superuserUrl: string; migratorUrl: string; staffUrl: string; partnerUrl: string }
@@ -449,17 +463,20 @@ export type ActorScope =
   | { kind: 'partner'; userId: string; partnerOrgId: string }
   | { kind: 'system' };
 export type Tx = NodePgDatabase<typeof schema>;
-export interface Db { close(): Promise<void> }          // pools are private to the module
-export function createDb(config: DbConfig): Db;
-export function withTransaction<T>(db: Db, scope: ActorScope, fn: (tx: Tx) => Promise<T>): Promise<T>;
-export function pingDb(db: Db, timeoutMs: number): Promise<boolean>;      // never throws
-export function migrationsCurrent(db: Db, expectedCount: number): Promise<boolean>;
+export class Database {                                   // pools are private fields
+  constructor(config: DbConfig, onPoolError: (err: Error) => void);
+  transaction<T>(scope: ActorScope, fn: (tx: Tx) => Promise<T>): Promise<T>;
+  ping(timeoutMs: number): Promise<boolean>;              // never throws
+  migrationsCurrent(expectedCount: number): Promise<boolean>;
+  close(): Promise<void>;
+}
 export const EXPECTED_MIGRATION_COUNT = 10;
 export * as schema from './schema/index.js';
-export { runMigrations, bootstrapRoles } from './migrate/...';
+export { MigrationRunner, RoleBootstrapper } from './migrate/...';
 ```
 
-`withTransaction` is the only exported way to reach the database. `partner` scope uses the
+In the tests below, `withTransaction` means `Database.transaction` and `pingDb` means
+`Database.ping`. `Database.transaction` is the only way to reach the database. `partner` scope uses the
 partner pool and sets both settings; `staff` uses the staff pool and sets `app.user_id`;
 `system` uses the staff pool and sets neither. Pools set `application_name` (`wms-staff`,
 `wms-partner`) and `statement_timeout` from config. A pool `error` event is logged by the
@@ -498,8 +515,14 @@ caller-supplied handler and never crashes the process.
 
 ```ts
 // apps/api/src/app.ts
-export interface AppDeps { config: AppConfig; db: Db }
-export function buildApp(deps: AppDeps): Promise<FastifyInstance>;
+export interface AppDeps { config: AppConfig; db: Database }
+export function buildApp(deps: AppDeps): Promise<FastifyInstance>; // the composition root
+// apps/api/src/modules/health/health.service.ts
+export class HealthService {
+  constructor(db: Database, expectedMigrations: number);
+  isReady(): Promise<boolean>;
+}
+// apps/api/src/modules/health/health.routes.ts — registers /healthz and /readyz, given a HealthService
 // apps/api/src/errors.ts
 export class AppError extends Error {
   constructor(readonly status: number, readonly code: string, title: string, detail?: string);
@@ -538,7 +561,10 @@ Logger redacts `req.headers.authorization`, `req.headers.cookie`, `res.headers["
   10. `malformed JSON returns a 400 problem, not a 500`.
 - [ ] **Step 2:** Run `corepack pnpm --filter @wms/api test`. Expected: FAIL.
 - [ ] **Step 3: Implement** `app.ts`, `errors.ts`, `plugins/` (error handler, request id,
-  security headers), `routes/health.ts`, `server.ts`.
+  security headers), `modules/health/` (service + routes), `server.ts`. `modules/health` is the
+  template every later module copies: `<name>.routes.ts`, `<name>.service.ts`, and, once it
+  touches tables, `<name>.repository.ts`. `buildApp` is the only place objects are constructed
+  and wired; nothing else calls `new` on a service or reaches for `Database` by import.
 - [ ] **Step 4:** Run the package tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): bootable API with health, problem errors and hardening`.
 
@@ -550,5 +576,7 @@ Logger redacts `req.headers.authorization`, `req.headers.cookie`, `res.headers["
 - [ ] `docker build -f infra/docker/Dockerfile .` succeeds; `docker run --rm <image> id -u` is not `0`.
 - [ ] `git ls-files | grep -E '(^|/)\.env'` prints nothing. Gitleaks over the full history is clean.
 - [ ] Adversarial read of every migration and of `client.ts` against spec sections 7, 9 and 15.
-- [ ] Update `CLAUDE.md` commands, `.claude/rules/conventions.md`, and add
-  `.claude/rules/architecture.md`; append lessons.
+- [ ] Update `CLAUDE.md` commands and `.claude/rules/conventions.md`; check
+  `.claude/rules/architecture.md` against the code as built; append lessons.
+- [ ] Build the code map: `graphify .` from the repository root; commit
+  `graphify-out/GRAPH_REPORT.md`, `graph.json`, `graph.html` (see `.claude/rules/agent-context.md`).
