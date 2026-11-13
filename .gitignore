@@ -1,0 +1,38 @@
+# --- Secrets: NO env file is ever tracked, placeholders included. ---
+# Glob on purpose: a list of names always misses the next variant.
+# Variable NAMES are documented in docs/ (prose), never in a committed env file.
+.env*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# --- Dependencies / build output ---
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# --- Local data: database volumes, uploads, backups never enter git ---
+pgdata/
+uploads/
+backups/
+*.dump
+*.sql.gz
+
+# --- Logs / OS / editor ---
+*.log
+logs/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Claude Code: shared memory is tracked, personal overrides are not ---
+.claude/settings.local.json
+graphify-out/
