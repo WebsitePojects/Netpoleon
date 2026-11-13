@@ -8,6 +8,18 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-13
+- **When Docker Desktop hangs on this machine, check free space on `C:` before anything else.**
+  `docker version` timed out twice and a restart only helped for minutes. The cause was `C:` at
+  0 MB free: Docker's data lives on `E:\DockerData`, but Docker Desktop and WSL still need room
+  on the system drive, and the backend log showed `Failed to attach disk ... docker_data.vhdx`.
+  Symptom looks like a Docker bug; it is a full disk. Check with
+  `Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"`. Never "fix" it with
+  `wsl --shutdown` or a prune — other projects' containers live in the same engine.
+- **A hardened container probe is not the way to test compose hardening on a dev laptop.** An
+  agent started Postgres with `read_only` + `cap_drop` to check `compose.prod.yml` just before
+  the engine hung. Whether it contributed is unproven (the disk was already full), but the
+  hardened Postgres service remains unverified and must be proven on the real server before
+  go-live, with the read-only context block from `vps-safety.md` first.
 - **The requirements PDF is image-only and lives outside the repo; read it by rendering pages.**
   `D:\Win10_UserData\Downloads\NWAMS.pdf` (the Windows Downloads folder is relocated to `D:`,
   and the file is NWAMS, not NWASM) has zero extractable text — all 8 pages are flattened
