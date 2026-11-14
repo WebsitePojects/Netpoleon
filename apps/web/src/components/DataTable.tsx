@@ -211,7 +211,9 @@ export function DataTable<T>({
         const left = by(a);
         const right = by(b);
         const blank = (value: SortValue) => value === null || value === '';
-        return blank(left) || blank(right) ? compare(left, right) : direction * compare(left, right);
+        return blank(left) || blank(right)
+          ? compare(left, right)
+          : direction * compare(left, right);
       });
     }
     return result;

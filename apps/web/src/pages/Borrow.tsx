@@ -3,12 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { DateField, Select, SuggestInput } from '../components/controls.js';
-import {
-  DataTable,
-  runBatch,
-  type Column,
-  type TableFilter,
-} from '../components/DataTable.js';
+import { DataTable, runBatch, type Column, type TableFilter } from '../components/DataTable.js';
 import { ActionDialog, ReasonDialog } from '../components/dialogs.js';
 import {
   Button,
@@ -41,6 +36,9 @@ function isTabId(value: string | null): value is TabId {
 
 export function Borrow() {
   const state = useWmsState();
+  const store = useStore();
+  const user = useCurrentUser();
+  const toast = useToast();
   const { can } = useAuth();
   const navigate = useNavigate();
   const ready = usePageReady();

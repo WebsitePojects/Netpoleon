@@ -41,6 +41,11 @@ export default defineConfig(
     files: ['**/*.js'],
     languageOptions: { globals: globals.node },
   },
+  // Playwright scripts run in Node but pass callbacks that execute inside the page.
+  {
+    files: ['apps/web/e2e/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
   // Last, so formatting is left entirely to Prettier.
   prettier,
 );

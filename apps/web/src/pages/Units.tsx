@@ -3,12 +3,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { CONDITION_OPTIONS, Select, SuggestInput } from '../components/controls.js';
-import {
-  DataTable,
-  runBatch,
-  type Column,
-  type TableFilter,
-} from '../components/DataTable.js';
+import { DataTable, runBatch, type Column, type TableFilter } from '../components/DataTable.js';
 import { ShelfDialog } from '../components/dialogs.js';
 import {
   Button,

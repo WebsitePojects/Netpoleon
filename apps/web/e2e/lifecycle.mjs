@@ -43,8 +43,10 @@ function assert(condition, message) {
 }
 
 const readState = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('wms-demo-state')));
-const unitOf = async (page, code) => (await readState(page)).units.find((unit) => unit.code === code);
-const loanOf = async (page, number) => (await readState(page)).loans.find((loan) => loan.number === number);
+const unitOf = async (page, code) =>
+  (await readState(page)).units.find((unit) => unit.code === code);
+const loanOf = async (page, number) =>
+  (await readState(page)).loans.find((loan) => loan.number === number);
 
 /** Polls the saved demo data until `predicate` holds, so a check never races the UI. */
 async function waitForState(page, predicate, what) {
@@ -77,7 +79,10 @@ async function choose(page, field, value) {
 }
 
 async function workflow(browser) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    acceptDownloads: true,
+  });
   const page = await context.newPage();
   activePage = page;
   const errors = [];
@@ -106,14 +111,17 @@ async function workflow(browser) {
     await page.waitForURL(`${BASE}/units`);
   });
 
-  await check('signing out, then an empty form, enters as the demo administrator on the dashboard', async () => {
-    await page.getByRole('button', { name: /Account menu/ }).click();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await page.waitForURL(`${BASE}/login`);
-    await signInEmpty(page);
-    await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
-    await page.getByText('Total Demo Units').waitFor();
-  });
+  await check(
+    'signing out, then an empty form, enters as the demo administrator on the dashboard',
+    async () => {
+      await page.getByRole('button', { name: /Account menu/ }).click();
+      await page.getByRole('menuitem', { name: 'Sign out' }).click();
+      await page.waitForURL(`${BASE}/login`);
+      await signInEmpty(page);
+      await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
+      await page.getByText('Total Demo Units').waitFor();
+    },
+  );
 
   await check('step 1-2: register a unit and stock it on a shelf', async () => {
     await page.goto(`${BASE}/units`);
@@ -127,7 +135,10 @@ async function workflow(browser) {
     await page.waitForURL(/\/units\/NTP-FW-\d{5}$/);
     unitCode = page.url().split('/').pop();
     const unit = await unitOf(page, unitCode);
-    assert(unit.status === 'in_stock' && unit.locationId === 'shelf-c-1', 'unit is not stocked on shelf C-01');
+    assert(
+      unit.status === 'in_stock' && unit.locationId === 'shelf-c-1',
+      'unit is not stocked on shelf C-01',
+    );
     assert(unit.accessories.length === 3, 'accessories were not filled from the known model');
   });
 
@@ -141,9 +152,15 @@ async function workflow(browser) {
       const box = overlay.getBoundingClientRect();
       return {
         inBody: overlay.parentElement === document.body,
-        covers: box.left <= 0 && box.top <= 0 && box.right >= innerWidth - 1 && box.bottom >= innerHeight - 1,
+        covers:
+          box.left <= 0 &&
+          box.top <= 0 &&
+          box.right >= innerWidth - 1 &&
+          box.bottom >= innerHeight - 1,
         blur: getComputedStyle(overlay).backdropFilter,
-        native: document.querySelectorAll('.dialog select, .dialog input[type="date"], .dialog datalist').length,
+        native: document.querySelectorAll(
+          '.dialog select, .dialog input[type="date"], .dialog datalist',
+        ).length,
       };
     });
     assert(facts.inBody && facts.covers, 'overlay does not cover the whole window');
@@ -170,7 +187,10 @@ async function workflow(browser) {
       await calendar.getByRole('button', { name: /next month/i }).click();
     }
     await calendar.locator(`[data-day="${day}"]`).click();
-    assert((await dialog(page).getByLabel('Expected return').getAttribute('data-value')) === day, 'date was not picked');
+    assert(
+      (await dialog(page).getByLabel('Expected return').getAttribute('data-value')) === day,
+      'date was not picked',
+    );
     await page.keyboard.press('Escape');
     await dialog(page).waitFor({ state: 'detached' });
   });
@@ -182,7 +202,10 @@ async function workflow(browser) {
     const after = await page.evaluate(() => document.documentElement.dataset.theme);
     assert(after !== before, 'theme did not change');
     await page.reload();
-    assert((await page.evaluate(() => document.documentElement.dataset.theme)) === after, 'theme was not remembered');
+    assert(
+      (await page.evaluate(() => document.documentElement.dataset.theme)) === after,
+      'theme was not remembered',
+    );
     await page.locator('.theme-toggle').click();
     await page.waitForTimeout(1200);
   });
@@ -195,7 +218,9 @@ async function workflow(browser) {
     await dialog(page).getByLabel('Model', { exact: true }).fill('FG-60F');
     await dialog(page).getByLabel('Serial number').fill(serial);
     await dialog(page).getByRole('button', { name: 'Register unit' }).click();
-    await dialog(page).getByText(/already registered/).waitFor();
+    await dialog(page)
+      .getByText(/already registered/)
+      .waitFor();
     await dialog(page).getByRole('button', { name: 'Cancel' }).click();
   });
 
@@ -215,7 +240,10 @@ async function workflow(browser) {
 
   await check('the person who filed a request cannot approve it', async () => {
     await page.getByText(/another approver must decide it/).waitFor();
-    assert(await page.getByRole('button', { name: 'Approve' }).isDisabled(), 'Approve is enabled for the filer');
+    assert(
+      await page.getByRole('button', { name: 'Approve' }).isDisabled(),
+      'Approve is enabled for the filer',
+    );
   });
 
   await check('step 3b: a manager approves and assigns the physical unit', async () => {
@@ -223,12 +251,22 @@ async function workflow(browser) {
     await page.getByRole('button', { name: 'Approve' }).click();
     await choose(page, dialog(page).getByLabel('Unit to reserve'), unitCode);
     await dialog(page).getByRole('button', { name: 'Approve request' }).click();
-    await waitForState(page, (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'approved', 'approved');
-    assert((await unitOf(page, unitCode)).reservedFor === loanNumber, 'unit is not reserved for the loan');
+    await waitForState(
+      page,
+      (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'approved',
+      'approved',
+    );
+    assert(
+      (await unitOf(page, unitCode)).reservedFor === loanNumber,
+      'unit is not reserved for the loan',
+    );
   });
 
   await check('a manager has no release button (role wall)', async () => {
-    assert((await page.getByRole('button', { name: 'Release unit' }).count()) === 0, 'manager can release');
+    assert(
+      (await page.getByRole('button', { name: 'Release unit' }).count()) === 0,
+      'manager can release',
+    );
   });
 
   await check('step 4: release refuses a scan of the wrong unit', async () => {
@@ -236,29 +274,49 @@ async function workflow(browser) {
     await page.getByRole('button', { name: 'Release unit' }).click();
     await dialog(page).getByPlaceholder('Scan or type the asset code').fill('NTP-SW-00001');
     await dialog(page).getByRole('button', { name: 'Confirm release' }).click();
-    await dialog(page).getByText(/Scanned NTP-SW-00001, but this transaction is for/).waitFor();
-    assert((await loanOf(page, loanNumber)).status === 'approved', 'loan changed despite the wrong scan');
+    await dialog(page)
+      .getByText(/Scanned NTP-SW-00001, but this transaction is for/)
+      .waitFor();
+    assert(
+      (await loanOf(page, loanNumber)).status === 'approved',
+      'loan changed despite the wrong scan',
+    );
   });
 
   await check('step 4: a double click on release has exactly one effect', async () => {
     await dialog(page).getByRole('button', { name: 'Simulate scan' }).click();
     await dialog(page).getByText(`Label matches ${unitCode}`).waitFor();
     await dialog(page).getByRole('button', { name: 'Confirm release' }).dblclick();
-    await waitForState(page, (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'released', 'released');
+    await waitForState(
+      page,
+      (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'released',
+      'released',
+    );
     const state = await readState(page);
-    const released = state.movements.filter((item) => item.unitCode === unitCode && item.type === 'released');
+    const released = state.movements.filter(
+      (item) => item.unitCode === unitCode && item.type === 'released',
+    );
     assert(released.length === 1, `expected 1 release movement, found ${released.length}`);
     const unit = state.units.find((item) => item.code === unitCode);
-    assert(unit.status === 'on_demo' && unit.locationId === 'client-site', 'unit is not on demo at the client site');
+    assert(
+      unit.status === 'on_demo' && unit.locationId === 'client-site',
+      'unit is not on demo at the client site',
+    );
   });
 
   await check('step 5: receive the return with a missing accessory', async () => {
     await page.getByRole('button', { name: 'Receive return' }).click();
     await dialog(page).getByRole('button', { name: 'Simulate scan' }).click();
     await dialog(page).getByLabel('Power adapter').uncheck();
-    await dialog(page).getByText(/Missing: Power adapter/).waitFor();
+    await dialog(page)
+      .getByText(/Missing: Power adapter/)
+      .waitFor();
     await dialog(page).getByRole('button', { name: 'Confirm return' }).click();
-    await waitForState(page, (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'returned', 'returned');
+    await waitForState(
+      page,
+      (state) => state.loans.find((loan) => loan.number === loanNumber).status === 'returned',
+      'returned',
+    );
     const loan = await loanOf(page, loanNumber);
     assert(/missing power adapter/.test(loan.returnNote), 'missing accessory not recorded');
     assert((await unitOf(page, unitCode)).status === 'returned', 'unit is not returned');
@@ -272,40 +330,86 @@ async function workflow(browser) {
 
   await check('step 5b: start the inspection', async () => {
     await page.goto(`${BASE}/inspection`);
-    await page.locator('tr', { hasText: unitCode }).getByRole('button', { name: 'Start inspection' }).click();
-    await waitForState(page, (state) => state.units.find((unit) => unit.code === unitCode).status === 'under_inspection', 'under inspection');
+    await page
+      .locator('tr', { hasText: unitCode })
+      .getByRole('button', { name: 'Start inspection' })
+      .click();
+    await waitForState(
+      page,
+      (state) => state.units.find((unit) => unit.code === unitCode).status === 'under_inspection',
+      'under inspection',
+    );
   });
 
   await check('step 6: record the result and restock', async () => {
     await page.getByRole('tab', { name: /Under inspection/ }).click();
-    await page.locator('tr', { hasText: unitCode }).getByRole('button', { name: 'Record result' }).click();
-    assert(!(await dialog(page).getByLabel('Accessories complete').isChecked()), 'checklist ignores the missing accessory');
+    await page
+      .locator('tr', { hasText: unitCode })
+      .getByRole('button', { name: 'Record result' })
+      .click();
+    assert(
+      !(await dialog(page).getByLabel('Accessories complete').isChecked()),
+      'checklist ignores the missing accessory',
+    );
     await dialog(page).getByRole('button', { name: 'Record inspection' }).click();
-    await waitForState(page, (state) => state.units.find((unit) => unit.code === unitCode).status === 'in_stock', 'restocked');
+    await waitForState(
+      page,
+      (state) => state.units.find((unit) => unit.code === unitCode).status === 'in_stock',
+      'restocked',
+    );
     const state = await readState(page);
-    assert(state.loans.find((loan) => loan.number === loanNumber).status === 'closed', 'loan is not closed');
+    assert(
+      state.loans.find((loan) => loan.number === loanNumber).status === 'closed',
+      'loan is not closed',
+    );
     const unit = state.units.find((item) => item.code === unitCode);
-    assert(unit.locationId.startsWith('shelf-'), `unit was restocked to ${unit.locationId}, not a shelf`);
+    assert(
+      unit.locationId.startsWith('shelf-'),
+      `unit was restocked to ${unit.locationId}, not a shelf`,
+    );
     assert(!state.readAlertIds.includes(`missing:${loanNumber}`), 'unexpected alert state');
   });
 
   await check('step 7: the unit history shows every step in order', async () => {
     await page.goto(`${BASE}/units/${unitCode}`);
     const state = await readState(page);
-    const trail = state.movements.filter((item) => item.unitCode === unitCode).map((item) => item.type);
-    const expected = ['registered', 'stocked', 'reserved', 'released', 'returned', 'inspection_started', 'restocked'];
+    const trail = state.movements
+      .filter((item) => item.unitCode === unitCode)
+      .map((item) => item.type);
+    const expected = [
+      'registered',
+      'stocked',
+      'reserved',
+      'released',
+      'returned',
+      'inspection_started',
+      'restocked',
+    ];
     assert(JSON.stringify(trail) === JSON.stringify(expected), `trail was ${trail.join(' > ')}`);
     const table = page.locator('section', { hasText: 'Movement history' }).first();
-    for (const label of ['Registered', 'Stocked', 'Reserved', 'Release', 'Return', 'Inspection', 'Restock']) {
+    for (const label of [
+      'Registered',
+      'Stocked',
+      'Reserved',
+      'Release',
+      'Return',
+      'Inspection',
+      'Restock',
+    ]) {
       await table.getByText(label, { exact: true }).first().waitFor();
     }
   });
 
   await check('the audit trail recorded each actor', async () => {
     const state = await readState(page);
-    const mine = state.audit.filter((entry) => entry.target === loanNumber || entry.target === unitCode);
+    const mine = state.audit.filter(
+      (entry) => entry.target === loanNumber || entry.target === unitCode,
+    );
     const actors = new Set(mine.map((entry) => entry.actor));
-    assert(actors.has('lara') && actors.has('tina') && actors.has('marco'), `actors: ${[...actors].join(', ')}`);
+    assert(
+      actors.has('lara') && actors.has('tina') && actors.has('marco'),
+      `actors: ${[...actors].join(', ')}`,
+    );
     await page.goto(`${BASE}/users?tab=activity`);
     await page.getByPlaceholder(/Search by person/).fill(loanNumber);
     await page.locator('tbody tr', { hasText: 'loan.approved' }).waitFor();
@@ -316,23 +420,37 @@ async function workflow(browser) {
     await page.getByRole('button', { name: 'Send to repair' }).click();
     await dialog(page).getByLabel('What is wrong with it?').fill('Fan fault');
     await dialog(page).getByRole('button', { name: 'Send to repair' }).click();
-    await waitForState(page, (state) => state.units.find((unit) => unit.code === unitCode).status === 'for_repair', 'for repair');
+    await waitForState(
+      page,
+      (state) => state.units.find((unit) => unit.code === unitCode).status === 'for_repair',
+      'for repair',
+    );
     await page.getByRole('button', { name: 'Repair complete' }).click();
     await dialog(page).getByRole('button', { name: 'Restock unit' }).click();
-    await waitForState(page, (state) => state.units.find((unit) => unit.code === unitCode).status === 'in_stock', 'repaired');
+    await waitForState(
+      page,
+      (state) => state.units.find((unit) => unit.code === unitCode).status === 'in_stock',
+      'repaired',
+    );
   });
 
   await check('an auditor reads everything and can change nothing', async () => {
     await switchTo(page, 'Grace Lim');
     await page.goto(`${BASE}/units`);
     await page.getByRole('heading', { name: 'Demo Units' }).waitFor();
-    assert((await page.getByRole('button', { name: 'Add Asset' }).count()) === 0, 'auditor sees Add Asset');
+    assert(
+      (await page.getByRole('button', { name: 'Add Asset' }).count()) === 0,
+      'auditor sees Add Asset',
+    );
     await page.goto(`${BASE}/settings`);
     await page.getByText(/viewing them read-only/).waitFor();
     assert(await page.getByLabel('Company name').isDisabled(), 'auditor can edit settings');
     await page.goto(`${BASE}/inspection`);
     await page.getByRole('heading', { name: 'Inspection' }).waitFor();
-    assert((await page.getByRole('button', { name: 'Start inspection' }).count()) === 0, 'auditor can inspect');
+    assert(
+      (await page.getByRole('button', { name: 'Start inspection' }).count()) === 0,
+      'auditor can inspect',
+    );
   });
 
   await check('settings save and survive a reload', async () => {
@@ -343,7 +461,10 @@ async function workflow(browser) {
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByText('All changes saved').waitFor();
     await page.reload();
-    assert((await page.getByLabel('Default loan length (days)').inputValue()) === '10', 'setting was not saved');
+    assert(
+      (await page.getByLabel('Default loan length (days)').inputValue()) === '10',
+      'setting was not saved',
+    );
   });
 
   await check('an invalid setting is refused', async () => {
@@ -356,7 +477,12 @@ async function workflow(browser) {
   await check('reports render and export a CSV', async () => {
     await page.goto(`${BASE}/reports`);
     await page.getByText('Equipment Movement Report').waitFor();
-    for (const tab of ['Borrower history', 'Aging and condition', 'Utilization', 'Tracking record']) {
+    for (const tab of [
+      'Borrower history',
+      'Aging and condition',
+      'Utilization',
+      'Tracking record',
+    ]) {
       await page.getByRole('tab', { name: tab }).click();
       await page.locator('.card').first().waitFor();
     }
@@ -364,7 +490,10 @@ async function workflow(browser) {
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'Export CSV' }).click(),
     ]);
-    assert(/^tracking-record-.*\.csv$/.test(download.suggestedFilename()), download.suggestedFilename());
+    assert(
+      /^tracking-record-.*\.csv$/.test(download.suggestedFilename()),
+      download.suggestedFilename(),
+    );
   });
 
   await check('global search finds the unit and the transaction', async () => {
@@ -386,7 +515,11 @@ async function workflow(browser) {
     await page.goto(`${BASE}/settings?section=data`);
     await page.getByRole('button', { name: 'Reset' }).click();
     await dialog(page).getByRole('button', { name: 'Reset demo data' }).click();
-    await waitForState(page, (state) => !state.units.some((unit) => unit.code === unitCode), 'reset');
+    await waitForState(
+      page,
+      (state) => !state.units.some((unit) => unit.code === unitCode),
+      'reset',
+    );
   });
 
   await check('no console errors during the workflow', async () => {
@@ -455,7 +588,10 @@ async function tour(browser) {
           headings: document.querySelectorAll('h1').length,
           theme: document.documentElement.dataset.theme,
         }));
-        await page.screenshot({ path: path.join(OUT, `${view.name}-${name}.png`), fullPage: view.mobile !== true });
+        await page.screenshot({
+          path: path.join(OUT, `${view.name}-${name}.png`),
+          fullPage: view.mobile !== true,
+        });
         assert(facts.overflow <= 0, `page scrolls sideways by ${facts.overflow}px`);
         assert(facts.headings === 1, `expected one h1, found ${facts.headings}`);
         assert(facts.theme === view.theme, `theme is ${facts.theme}`);
@@ -465,10 +601,16 @@ async function tour(browser) {
     if (view.mobile) {
       await check(`${view.name}: the menu drawer opens and navigates`, async () => {
         await page.goto(`${BASE}/`);
-        await page.getByRole('navigation', { name: 'Quick navigation' }).getByRole('button', { name: 'Menu' }).click();
+        await page
+          .getByRole('navigation', { name: 'Quick navigation' })
+          .getByRole('button', { name: 'Menu' })
+          .click();
         await page.waitForTimeout(400);
         await page.screenshot({ path: path.join(OUT, `${view.name}-drawer.png`) });
-        await page.getByRole('complementary', { name: 'Main menu' }).getByRole('link', { name: 'Reports' }).click();
+        await page
+          .getByRole('complementary', { name: 'Main menu' })
+          .getByRole('link', { name: 'Reports' })
+          .click();
         await page.waitForURL(`${BASE}/reports`);
       });
     }
@@ -488,5 +630,7 @@ try {
 }
 
 console.log(results.join('\n'));
-console.log(`\n${results.length - failures} passed, ${failures} failed. Screenshots: ${path.resolve(OUT)}`);
+console.log(
+  `\n${results.length - failures} passed, ${failures} failed. Screenshots: ${path.resolve(OUT)}`,
+);
 process.exit(failures === 0 ? 0 : 1);

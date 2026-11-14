@@ -87,7 +87,10 @@ export function Popover({
     );
     const width = matchWidth ? Math.max(rect.width, 200) : undefined;
     const layerWidth = width ?? layer.current?.offsetWidth ?? 300;
-    const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.left, viewWidth - layerWidth - VIEWPORT_MARGIN));
+    const left = Math.max(
+      VIEWPORT_MARGIN,
+      Math.min(rect.left, viewWidth - layerWidth - VIEWPORT_MARGIN),
+    );
     setPlacement({
       style: {
         left,
@@ -575,11 +578,7 @@ export function SkTable({
       )}
       <div className="sk-row sk-head" style={grid}>
         {cells.map((cell, index) =>
-          cell === 'box' ? (
-            <Sk key={index} w={20} h={20} r={6} />
-          ) : (
-            <Sk key={index} w={64} h={9} />
-          ),
+          cell === 'box' ? <Sk key={index} w={20} h={20} r={6} /> : <Sk key={index} w={64} h={9} />,
         )}
       </div>
       {Array.from({ length: rows }, (_, row) => (

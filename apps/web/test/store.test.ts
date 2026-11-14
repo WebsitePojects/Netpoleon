@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildAlerts, countByStatus } from '../src/data/selectors.js';
-import { WmsError, WmsStore, type InspectionInput, type KeyValueStorage } from '../src/data/store.js';
+import {
+  WmsError,
+  WmsStore,
+  type InspectionInput,
+  type KeyValueStorage,
+} from '../src/data/store.js';
 import { addDays, toDateKey } from '../src/lib/dates.js';
 
 class MemoryStorage implements KeyValueStorage {

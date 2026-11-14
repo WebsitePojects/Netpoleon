@@ -274,7 +274,11 @@ export function Tabs<T extends string>({
 }) {
   const list = useRef<HTMLDivElement>(null);
   const ink = useRef<HTMLSpanElement>(null);
-  useLiquidInk(list, ink, `${value}|${tabs.map((tab) => `${tab.label}${tab.count ?? ''}`).join('|')}`);
+  useLiquidInk(
+    list,
+    ink,
+    `${value}|${tabs.map((tab) => `${tab.label}${tab.count ?? ''}`).join('|')}`,
+  );
   return (
     <div className="tabs" role="tablist" aria-label={label} ref={list}>
       <span className="tab-ink" ref={ink} aria-hidden="true" />
