@@ -3,7 +3,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import type { DbConfig } from '@wms/config';
 import { eq, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Database } from '../src/client.js';
+import { Database, EXPECTED_MIGRATION_COUNT } from '../src/client.js';
 import { InvalidScopeError } from '../src/scope.js';
 import { categories } from '../src/schema/index.js';
 import { getTestDb, sqlState } from './helpers.js';
@@ -196,15 +196,15 @@ describe('Database', () => {
     const db = open(configFor());
 
     await expect(db.ping(2_000)).resolves.toBe(true);
-    await expect(db.migrationsCurrent(10)).resolves.toBe(true);
-    await expect(db.migrationsCurrent(9)).resolves.toBe(false);
-    await expect(db.migrationsCurrent(11)).resolves.toBe(false);
+    await expect(db.migrationsCurrent(EXPECTED_MIGRATION_COUNT)).resolves.toBe(true);
+    await expect(db.migrationsCurrent(EXPECTED_MIGRATION_COUNT - 1)).resolves.toBe(false);
+    await expect(db.migrationsCurrent(EXPECTED_MIGRATION_COUNT + 1)).resolves.toBe(false);
   });
 
   it('migrationsCurrent returns false instead of throwing when the database is down', async () => {
     const db = open(unreachable(CLOSED_PORT_URL));
 
-    await expect(db.migrationsCurrent(10)).resolves.toBe(false);
+    await expect(db.migrationsCurrent(EXPECTED_MIGRATION_COUNT)).resolves.toBe(false);
   });
 
   it('sends pool errors to the injected handler instead of crashing', () => {

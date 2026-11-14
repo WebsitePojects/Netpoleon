@@ -6,7 +6,7 @@ import * as schema from './schema/index.js';
 
 export type Tx = NodePgDatabase<typeof schema>;
 
-export const EXPECTED_MIGRATION_COUNT = 10;
+export const EXPECTED_MIGRATION_COUNT = 11;
 
 // Bounds how long a request can wait for a connection when the database is down.
 const CONNECT_TIMEOUT_MS = 5_000;

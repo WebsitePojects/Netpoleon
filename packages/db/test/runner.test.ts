@@ -33,7 +33,7 @@ describe('migration runner', () => {
     const first = await runner.run();
     const second = await runner.run();
 
-    expect(expected).toHaveLength(10);
+    expect(expected).toHaveLength(11);
     expect(first).toEqual({ applied: expected, skipped: [] });
     expect(second.applied).toHaveLength(0);
     expect(second.skipped).toEqual(expected);

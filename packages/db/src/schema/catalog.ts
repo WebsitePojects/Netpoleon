@@ -53,4 +53,5 @@ export const assets = pgTable('assets', {
   ownership: ownershipType('ownership').notNull().default('owned'),
   ownerName: text('owner_name'),
   retiredAt: timestamptz('retired_at'),
+  notes: text('notes'),
 });

@@ -8,6 +8,17 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **`pnpm add` wrote `^` ranges here even though `.npmrc` has `save-exact=true`.** Seven new
+  dependencies landed as carets. Always pass `-E`, then check with
+  `grep '"\^' apps/*/package.json packages/*/package.json package.json` before committing.
+- **Have the plan attacked before any code is written.** An adversarial read of the backend plan
+  against the migrations found two blockers no amount of building would have fixed cheaply: a
+  request needs a `partner_orgs` row the screens never supplied, and keyset paging cannot serve
+  page-number tables (and `count(*) OVER ()` after a cursor predicate is not the total). The
+  corrections are section 9 of `docs/superpowers/plans/2026-11-15-real-backend.md`.
+- **The owner wants one builder agent at a time, not parallel builders** (said 2026-11-15, after
+  three were launched). Queue tasks to the same agent so it keeps its context; partial files
+  from a stopped builder stay in the tree and must be reviewed, not assumed complete.
 - **A red format step hides every bug behind it.** CI stops at the first failing step, so the
   web branch's format failure kept typecheck from ever running, and a real crash went unseen:
   bulk "Reject requests" on Borrow / Return called `store`, `user` and `toast` that `Borrow()`

@@ -64,3 +64,14 @@ export const outboxStatus = pgEnum('outbox_status', ['pending', 'processing', 'd
 export const authTokenPurpose = pgEnum('auth_token_purpose', ['invite', 'password_reset']);
 export const locationKind = pgEnum('location_kind', ['site', 'room', 'shelf']);
 export const extensionStatus = pgEnum('extension_status', ['requested', 'approved', 'rejected']);
+// Computed by the transaction_overview view, never stored in a table.
+export const transactionStage = pgEnum('transaction_stage', [
+  'pending',
+  'approved',
+  'rejected',
+  'cancelled',
+  'expired',
+  'released',
+  'returned',
+  'closed',
+]);

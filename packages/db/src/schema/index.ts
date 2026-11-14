@@ -10,3 +10,4 @@ export * from './lending.js';
 export * from './inspection.js';
 export * from './accountability.js';
 export * from './plumbing.js';
+export * from './views.js';

@@ -25,6 +25,10 @@ export const users = pgTable('users', {
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lockedUntil: timestamptz('locked_until'),
   lastLoginAt: timestamptz('last_login_at'),
+  // Lower-case sign-in name (CHECK in 0011). Null for partners, who sign in by email; the API
+  // requires it for staff.
+  username: citext('username'),
+  title: text('title'),
 });
 
 export const sessions = pgTable('sessions', {

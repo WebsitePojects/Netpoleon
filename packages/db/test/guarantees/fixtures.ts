@@ -172,23 +172,69 @@ export class Fixtures {
     loanRequestId: string,
     partnerOrgId: string,
     releasedByUserId: string,
+    dueDate = '2030-03-05',
   ): Promise<string> {
     const n = await this.next();
     return this.insertId(
       `INSERT INTO loans
          (loan_no, loan_request_id, partner_org_id, contact_name, contact_email, contact_phone,
           released_by_user_id, released_at, due_date)
-       VALUES ($1, $2, $3, 'Contact', 'contact@example.test', '0000', $4, now(), '2030-03-05')
+       VALUES ($1, $2, $3, 'Contact', 'contact@example.test', '0000', $4, now(), $5)
        RETURNING id`,
-      [`BRR-T-${n}`, loanRequestId, partnerOrgId, releasedByUserId],
+      [`BRR-T-${n}`, loanRequestId, partnerOrgId, releasedByUserId, dueDate],
     );
   }
 
-  async loanItem(loanId: string, partnerOrgId: string, assetId: string): Promise<string> {
+  async loanItem(
+    loanId: string,
+    partnerOrgId: string,
+    assetId: string,
+    reservationId: string | null = null,
+  ): Promise<string> {
     return this.insertId(
-      `INSERT INTO loan_items (loan_id, partner_org_id, asset_id, released_at)
-       VALUES ($1, $2, $3, now()) RETURNING id`,
-      [loanId, partnerOrgId, assetId],
+      `INSERT INTO loan_items (loan_id, partner_org_id, asset_id, reservation_id, released_at)
+       VALUES ($1, $2, $3, $4, now()) RETURNING id`,
+      [loanId, partnerOrgId, assetId, reservationId],
+    );
+  }
+
+  /** Records a decision the way the API does; `deciderId` is null for a cancellation. */
+  async decideRequest(
+    loanRequestId: string,
+    status: 'approved' | 'rejected' | 'cancelled' | 'expired' | 'fulfilled',
+    deciderId: string | null,
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE loan_requests
+          SET status = $2, decided_by_user_id = $3, decided_at = CASE WHEN $3::uuid IS NULL THEN NULL ELSE now() END
+        WHERE id = $1`,
+      [loanRequestId, status, deciderId],
+    );
+  }
+
+  async setReservationStatus(reservationId: string, status: string): Promise<void> {
+    await this.db.query('UPDATE reservations SET status = $2 WHERE id = $1', [
+      reservationId,
+      status,
+    ]);
+  }
+
+  async returnLoanItem(loanItemId: string): Promise<void> {
+    await this.db.query('UPDATE loan_items SET returned_at = now() WHERE id = $1', [loanItemId]);
+  }
+
+  async loanExtension(
+    loanId: string,
+    partnerOrgId: string,
+    requestedByUserId: string,
+    requestedDueDate: string,
+    status: 'requested' | 'approved' | 'rejected',
+  ): Promise<string> {
+    return this.insertId(
+      `INSERT INTO loan_extensions
+         (loan_id, partner_org_id, requested_by_user_id, requested_due_date, reason, status)
+       VALUES ($1, $2, $3, $4, 'test', $5) RETURNING id`,
+      [loanId, partnerOrgId, requestedByUserId, requestedDueDate, status],
     );
   }
 

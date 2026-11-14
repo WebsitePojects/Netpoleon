@@ -26,6 +26,30 @@ const HISTORY_TRIGGERS = [
   ['audit_log', 'audit_log_reject_truncate'],
 ] as const;
 
+// Migration 0011: each index is named with a fragment of its definition, so a later migration
+// that rebuilds one differently (a b-tree where a trigram GIN was meant) fails by name.
+const CONSOLE_INDEXES = [
+  ['audit_log_occurred_at_idx', 'USING btree (occurred_at DESC)'],
+  ['assets_asset_code_trgm_idx', 'USING gin (asset_code gin_trgm_ops)'],
+  ['assets_serial_number_trgm_idx', 'USING gin (serial_number gin_trgm_ops)'],
+  [
+    'product_models_search_trgm_idx',
+    "USING gin ((((brand || ' '::text) || model_name)) gin_trgm_ops)",
+  ],
+  ['loan_requests_contact_name_trgm_idx', 'USING gin (contact_name gin_trgm_ops)'],
+  ['partner_orgs_name_trgm_idx', 'USING gin (name gin_trgm_ops)'],
+  ['assets_updated_idx', 'USING btree (updated_at DESC, id DESC)'],
+  ['assets_status_updated_idx', 'USING btree (status, updated_at DESC, id DESC)'],
+  ['loan_requests_created_idx', 'USING btree (created_at DESC, id DESC)'],
+  ['loan_requests_status_created_idx', 'USING btree (status, created_at DESC, id DESC)'],
+  ['loan_requests_needed_from_idx', 'USING btree (needed_from DESC, id DESC)'],
+  [
+    'loans_one_per_request',
+    'UNIQUE INDEX loans_one_per_request ON public.loans USING btree (loan_request_id)',
+  ],
+  ['users_username_key', 'UNIQUE INDEX users_username_key ON public.users USING btree (username)'],
+] as const;
+
 describe('database catalogue', () => {
   let db: Client;
 
@@ -163,6 +187,65 @@ describe('database catalogue', () => {
         ORDER BY 1, 2`,
     );
     expect(rows).toEqual([]);
+  });
+
+  it('has pg_trgm installed for the console search indexes', async () => {
+    const { rows } = await db.query<{ extname: string }>(
+      "SELECT extname FROM pg_extension WHERE extname = 'pg_trgm'",
+    );
+    expect(rows).toEqual([{ extname: 'pg_trgm' }]);
+  });
+
+  it.each(CONSOLE_INDEXES)('has index %s defined as %s', async (name, fragment) => {
+    const { rows } = await db.query<{ indexdef: string }>(
+      "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = $1",
+      [name],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.indexdef).toContain(fragment);
+  });
+
+  it('has the username format and title columns on users', async () => {
+    const { rows } = await db.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conname = 'users_username_format' AND contype = 'c'
+          AND conrelid = 'public.users'::regclass`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.definition).toContain('^[a-z][a-z0-9._-]{2,23}$');
+  });
+
+  it('runs transaction_overview with the caller’s rights, so row-level security applies', async () => {
+    const { rows } = await db.query<{ options: string[] | null }>(
+      `SELECT reloptions AS options FROM pg_class
+        WHERE oid = 'public.transaction_overview'::regclass AND relkind = 'v'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.options).toContain('security_invoker=true');
+  });
+
+  it('grants transaction_overview to staff only, and read-only', async () => {
+    const { rows } = await db.query<{ grantee: string; privilege: string }>(
+      `SELECT grantee, privilege_type AS privilege FROM information_schema.role_table_grants
+        WHERE table_schema = 'public' AND table_name = 'transaction_overview'
+          AND grantee <> 'wms_migrator'
+        ORDER BY grantee, privilege_type`,
+    );
+    expect(rows).toEqual([{ grantee: 'wms_staff', privilege: 'SELECT' }]);
+  });
+
+  it('lets staff write assets.notes but never status or current_location_id', async () => {
+    const { rows } = await db.query<{ column_name: string; privilege: string }>(
+      `SELECT column_name, privilege_type AS privilege FROM information_schema.column_privileges
+        WHERE table_schema = 'public' AND table_name = 'assets' AND grantee = 'wms_staff'
+          AND privilege_type IN ('INSERT', 'UPDATE')
+          AND column_name IN ('notes', 'status', 'current_location_id')
+        ORDER BY column_name, privilege_type`,
+    );
+    expect(rows).toEqual([
+      { column_name: 'notes', privilege: 'INSERT' },
+      { column_name: 'notes', privilege: 'UPDATE' },
+    ]);
   });
 
   it('maintains updated_at with a trigger on every table that has the column', async () => {
