@@ -7,7 +7,30 @@
 > Format: one bold takeaway per bullet, then the mechanism/cause and the fix.
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
+## 2026-11-15
+- **A red format step hides every bug behind it.** CI stops at the first failing step, so the
+  web branch's format failure kept typecheck from ever running, and a real crash went unseen:
+  bulk "Reject requests" on Borrow / Return called `store`, `user` and `toast` that `Borrow()`
+  never fetched. Before judging a red branch, run the whole gate locally
+  (`format:check && lint && typecheck && test`), not just the step CI reported.
+- **ESLint here only matches `**/*.ts` and `**/*.js`, so every `.tsx` file in `apps/web` is
+  unlinted.** Typecheck still covers them. Extending lint to `.tsx` (with React rules) is owed
+  work; expect findings when it is switched on.
+
 ## 2026-11-14
+- **A blob drawn as a `polygon()` with independent random jitter per vertex always looks spiky.**
+  Neighbouring vertices disagree, so every one becomes a corner. The theme wipe in
+  `apps/web/src/lib/hooks.ts` now builds the rim from four low harmonics (1–4 lobes; the 1-lobe
+  term makes it lopsided so it never reads as a circle) and draws it as a closed Catmull-Rom →
+  cubic Bézier `path()`, so it is smooth by construction. Motion is sampled into ~60 keyframes
+  with `linear` easing (the browser only interpolates between near-identical shapes).
+- **Size a reveal to the shape it actually has, then measure pacing in the browser.** Sizing the
+  blob for its worst-case dent (radius / (1 − wobble)) made it cover the screen at ~330 ms of
+  1100 ms: the rest played off screen. Now `radiusToCover` computes the exact radius for this
+  run's waves, and an accelerating curve (owner's ask: slow first, then fast) finishes coverage
+  at the very end of the run (700 ms total since the owner asked for a little faster). The check that caught it: read the keyframes from
+  `document.getAnimations()`, test a point grid with `Path2D` + `isPointInPath`, and print
+  coverage per frame. Eyeballing screenshots did not catch it.
 - **A root `"type": "module"` silently breaks every CommonJS `.js` script in the repo, including
   `.claude/hooks/`.** The lesson-guard Stop hook uses `require` and crashed with "require is not
   defined in ES module scope" from the moment the workspace `package.json` landed — the memory

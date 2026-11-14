@@ -153,29 +153,123 @@ function applyTheme(choice: ThemeChoice): void {
   document.documentElement.dataset.theme = resolvesDark(choice) ? 'dark' : 'light';
 }
 
-const WIPE_MS = 950;
-const BLOB_POINTS = 26;
+const WIPE_MS = 700;
+const WIPE_FRAMES = 48; // one keyframe per ~15 ms: the browser only interpolates between close shapes
+const EDGE_POINTS = 48;
 
-/**
- * A closed blob around (cx, cy). `jitter` holds one factor per vertex, so two blobs built from
- * different jitter lists have the same number of points and the browser can morph between them.
- */
-function blob(cx: number, cy: number, radius: number, jitter: number[]): string {
-  const points = jitter.map((factor, index) => {
-    const angle = (index / jitter.length) * Math.PI * 2;
-    const reach = radius * factor;
-    return `${(cx + Math.cos(angle) * reach).toFixed(1)}px ${(cy + Math.sin(angle) * reach).toFixed(1)}px`;
-  });
-  return `polygon(${points.join(', ')})`;
+// Slow first, then fast: the blob leaves the button with a small push and then accelerates
+// at a constant rate, like liquid gathering and then surging. Its speed peaks as it clears the
+// last corner, so the end is crisp rather than a slow creep. LAUNCH is the share of the final
+// size the initial push alone would cover; the rest comes from acceleration.
+const LAUNCH = 0.1;
+const reachAt = (progress: number): number =>
+  LAUNCH * progress + (1 - LAUNCH) * progress * progress;
+
+// How far the rim strays from a circle, as a share of the radius. Held for the whole wipe, so
+// the shape stays an abstract blob instead of relaxing into a disc.
+const WOBBLE = 0.42;
+
+/** Low harmonics only: one to four bulges around the rim read as liquid; high ones read as spikes. */
+interface EdgeWave {
+  lobes: number;
+  amplitude: number; // share of WOBBLE; the four add up to 1
+  phase: number;
+  drift: number; // radians per second the wave travels around the rim
 }
 
-const randomJitter = (low: number): number[] =>
-  Array.from({ length: BLOB_POINTS }, () => low + Math.random() * (1 - low));
+/**
+ * The one-lobe wave makes the blob lopsided, leaning towards `lean` (radians), so it pours into
+ * the page rather than swelling evenly; the others give it an irregular, slowly turning rim.
+ */
+function randomWaves(lean: number): EdgeWave[] {
+  const spin = () => (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 0.9);
+  return [
+    // sin(angle + phase) peaks where angle + phase = π/2.
+    { lobes: 1, amplitude: 0.4, phase: Math.PI / 2 - lean, drift: spin() * 0.3 },
+    { lobes: 2, amplitude: 0.3, phase: Math.random() * Math.PI * 2, drift: spin() },
+    { lobes: 3, amplitude: 0.18, phase: Math.random() * Math.PI * 2, drift: spin() },
+    { lobes: 4, amplitude: 0.12, phase: Math.random() * Math.PI * 2, drift: spin() },
+  ];
+}
+
+/** How far the rim sits from the base radius at `angle`, as a share of WOBBLE (-1 to 1). */
+function rimOffset(waves: EdgeWave[], angle: number, seconds: number): number {
+  return waves.reduce(
+    (sum, w) => sum + w.amplitude * Math.sin(w.lobes * angle + w.phase + w.drift * seconds),
+    0,
+  );
+}
 
 /**
- * Swaps the theme under an irregular blob that grows from `origin` until it covers the window.
- * The edge is re-randomised on every run and wobbles as it travels. Falls back to an instant
- * swap where view transitions are missing or the visitor asked for reduced motion.
+ * The smallest base radius whose final shape reaches every point of the window's edge, measured
+ * for this run's waves rather than the worst case, so the blob finishes covering exactly as the
+ * animation ends instead of finishing early and spending the rest of its time off screen.
+ */
+function radiusToCover(x: number, y: number, waves: EdgeWave[], seconds: number): number {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const step = 24; // px between edge samples; the rim cannot change much over that span
+  const edge: [number, number][] = [];
+  for (let px = 0; px <= width; px += step) edge.push([px, 0], [px, height]);
+  for (let py = 0; py <= height; py += step) edge.push([0, py], [width, py]);
+  edge.push([width, height]);
+  let needed = 0;
+  for (const [px, py] of edge) {
+    const angle = Math.atan2(py - y, px - x);
+    // WOBBLE < 1, so the divisor stays positive in every direction.
+    const scale = 1 + WOBBLE * rimOffset(waves, angle, seconds);
+    needed = Math.max(needed, Math.hypot(px - x, py - y) / scale);
+  }
+  // 4% spare absorbs the smooth curve sagging slightly inside the straight line between points.
+  return needed * 1.04;
+}
+
+/**
+ * A closed curve through the rim points. Catmull-Rom tangents turned into cubic Béziers keep the
+ * edge smooth at every point, so no corner can form however the waves combine.
+ */
+function smoothPath(points: [number, number][]): string {
+  const n = points.length;
+  const at = (i: number) => points[((i % n) + n) % n] as [number, number];
+  const f = (v: number) => v.toFixed(1);
+  let d = `M${f(at(0)[0])},${f(at(0)[1])}`;
+  for (let i = 0; i < n; i++) {
+    const [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += `C${f(c1x)},${f(c1y)} ${f(c2x)},${f(c2y)} ${f(p2[0])},${f(p2[1])}`;
+  }
+  return `path('${d}Z')`;
+}
+
+/**
+ * Every frame of the wipe, precomputed. The rim keeps its irregular shape all the way out, and
+ * the last frame is sized to this run's shape so the new theme covers the whole window exactly
+ * as the animation ends.
+ */
+function wipeFrames(x: number, y: number): string[] {
+  const lean = Math.atan2(window.innerHeight / 2 - y, window.innerWidth / 2 - x);
+  const waves = randomWaves(lean + (Math.random() - 0.5) * 0.8);
+  const finalRadius = radiusToCover(x, y, waves, WIPE_MS / 1000);
+  return Array.from({ length: WIPE_FRAMES + 1 }, (_, frame) => {
+    const progress = frame / WIPE_FRAMES;
+    const seconds = (progress * WIPE_MS) / 1000;
+    const radius = Math.max(2, finalRadius * reachAt(progress));
+    const rim = Array.from({ length: EDGE_POINTS }, (_, i): [number, number] => {
+      const angle = (i / EDGE_POINTS) * Math.PI * 2;
+      const r = radius * (1 + WOBBLE * rimOffset(waves, angle, seconds));
+      return [x + Math.cos(angle) * r, y + Math.sin(angle) * r];
+    });
+    return smoothPath(rim);
+  });
+}
+
+/**
+ * Swaps the theme under a liquid blob that spreads from `origin` until it covers the window.
+ * The rim's waves are re-randomised on every run. Falls back to an instant swap where view
+ * transitions are missing or the visitor asked for reduced motion.
  */
 function wipeTheme(swap: () => void, origin: { x: number; y: number } | undefined): void {
   if (!('startViewTransition' in document) || prefersReducedMotion()) {
@@ -184,22 +278,14 @@ function wipeTheme(swap: () => void, origin: { x: number; y: number } | undefine
   }
   const x = origin?.x ?? window.innerWidth / 2;
   const y = origin?.y ?? window.innerHeight / 2;
-  const cover = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
   const transition = document.startViewTransition(swap);
   void transition.ready.then(() => {
     document.documentElement.animate(
-      {
-        clipPath: [
-          blob(x, y, 4, randomJitter(0.6)),
-          blob(x, y, cover * 0.38, randomJitter(0.45)),
-          blob(x, y, cover * 0.85, randomJitter(0.5)),
-          // The loosest vertex sits at 0.7 of the radius, so 1.5x still clears every corner.
-          blob(x, y, cover * 1.5, randomJitter(0.7)),
-        ],
-      },
+      { clipPath: wipeFrames(x, y) },
       {
         duration: WIPE_MS,
-        easing: 'cubic-bezier(0.65, 0, 0.35, 1)',
+        // Timing already comes from the acceleration baked into the frames.
+        easing: 'linear',
         pseudoElement: '::view-transition-new(root)',
       },
     );

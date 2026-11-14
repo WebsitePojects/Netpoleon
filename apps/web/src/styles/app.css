@@ -3300,7 +3300,7 @@ tr.is-late td:first-child,
 :root[data-theme='dark'] .theme-toggle svg {
   filter: drop-shadow(0 0 8px rgb(255 190 110 / 0.55));
 }
-/* The wipe itself is driven from script (a randomised blob); these stop the default fade. */
+/* The wipe itself is driven from script (a spring-driven liquid blob); these stop the default fade. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
