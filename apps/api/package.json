@@ -11,19 +11,28 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fastify/cookie": "11.1.5",
+    "@fastify/etag": "6.2.2",
     "@fastify/helmet": "13.2.0",
+    "@fastify/rate-limit": "11.2.2",
     "@fastify/swagger": "9.9.3",
+    "@node-rs/argon2": "2.2.2",
     "@wms/config": "workspace:*",
     "@wms/contracts": "workspace:*",
     "@wms/db": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "fastify": "5.12.8",
     "fastify-plugin": "6.0.1",
     "fastify-type-provider-zod": "7.0.0",
+    "nodemailer": "10.5.0",
+    "pg": "8.23.1",
     "pino": "10.4.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "12.2.1",
+    "@types/nodemailer": "8.0.2",
+    "@types/pg": "8.23.1",
     "testcontainers": "12.2.1",
     "tsx": "4.23.15"
   }
