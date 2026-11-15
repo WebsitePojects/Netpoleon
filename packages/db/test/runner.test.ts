@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { EXPECTED_MIGRATION_COUNT } from '../src/client.js';
 import { MigrationChecksumError, MigrationRunner } from '../src/migrate/runner.js';
 import { createScratchDatabase, withClient } from './helpers.js';
 
@@ -33,7 +34,7 @@ describe('migration runner', () => {
     const first = await runner.run();
     const second = await runner.run();
 
-    expect(expected).toHaveLength(10);
+    expect(expected).toHaveLength(EXPECTED_MIGRATION_COUNT);
     expect(first).toEqual({ applied: expected, skipped: [] });
     expect(second.applied).toHaveLength(0);
     expect(second.skipped).toEqual(expected);

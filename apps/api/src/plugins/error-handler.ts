@@ -8,6 +8,7 @@ interface ProblemDescriptor {
   code: string;
   title: string;
   detail?: string;
+  headers?: Readonly<Record<string, string>>;
 }
 
 const MAX_DETAIL_LENGTH = 500;
@@ -74,6 +75,7 @@ export function describeError(error: unknown): ProblemDescriptor {
       code: error.code,
       title: error.message,
       ...(error.detail === undefined ? {} : { detail: error.detail }),
+      headers: error.headers,
     };
   }
   if (hasZodFastifySchemaValidationErrors(error)) {
@@ -122,6 +124,9 @@ export const errorHandlerPlugin = fp(
         request.log.warn({ code: descriptor.code }, 'request failed');
       } else {
         request.log.info({ code: descriptor.code }, 'request rejected');
+      }
+      for (const [name, value] of Object.entries(descriptor.headers ?? {})) {
+        reply.header(name, value);
       }
       return reply
         .status(descriptor.status)

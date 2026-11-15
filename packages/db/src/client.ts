@@ -6,10 +6,43 @@ import * as schema from './schema/index.js';
 
 export type Tx = NodePgDatabase<typeof schema>;
 
-export const EXPECTED_MIGRATION_COUNT = 10;
+export const EXPECTED_MIGRATION_COUNT = 11;
 
 // Bounds how long a request can wait for a connection when the database is down.
 const CONNECT_TIMEOUT_MS = 5_000;
+
+export interface DatabaseOptions {
+  /**
+   * Called with the text of every statement run inside `transaction()`, before it is sent.
+   * Tests use it to count queries per request, which is how an N+1 is caught.
+   */
+  onQuery?: (text: string) => void;
+}
+
+/** The same client, with `query` reporting each statement to `onQuery` first. */
+function observed(client: PoolClient, onQuery: (text: string) => void): PoolClient {
+  return new Proxy(client, {
+    get(target, property) {
+      if (property === 'query') {
+        return (...args: unknown[]) => {
+          const first = args[0];
+          onQuery(
+            typeof first === 'string'
+              ? first
+              : typeof first === 'object' && first !== null && 'text' in first
+                ? String(first.text)
+                : '',
+          );
+          return (target.query as (...rest: unknown[]) => unknown)(...args);
+        };
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === 'function'
+        ? (value as (...rest: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  });
+}
 
 /**
  * The only way to reach the database. Every call runs inside one transaction whose
@@ -19,8 +52,10 @@ const CONNECT_TIMEOUT_MS = 5_000;
 export class Database {
   private readonly staffPool: Pool;
   private readonly partnerPool: Pool;
+  private readonly onQuery: ((text: string) => void) | undefined;
 
-  constructor(config: DbConfig, onPoolError: (err: Error) => void) {
+  constructor(config: DbConfig, onPoolError: (err: Error) => void, options: DatabaseOptions = {}) {
+    this.onQuery = options.onQuery;
     const pool = (url: string, applicationName: string, max: number): Pool =>
       this.createPool(url, applicationName, max, config.statementTimeoutMs, onPoolError);
     this.staffPool = pool(config.staffUrl, 'wms-staff', config.staffPoolMax);
@@ -35,7 +70,8 @@ export class Database {
     try {
       await client.query('BEGIN');
       await this.applyScope(client, scope);
-      const result = await fn(drizzle(client, { schema }));
+      const runner = this.onQuery ? observed(client, this.onQuery) : client;
+      const result = await fn(drizzle(runner, { schema }));
       await client.query('COMMIT');
       return result;
     } catch (error) {

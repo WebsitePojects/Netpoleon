@@ -37,6 +37,26 @@ Imports go down that table only. A package never imports from `apps/`.
 - Tab strips use `Tabs` (`src/components/ui.tsx`); the highlight is one element moved by the
   spring in `useLiquidInk` (`src/lib/hooks.ts`).
 
+## The API platform (build order steps 3 and 4)
+- **Every state change goes through `Mutations.run(scope, idempotency, change)`**
+  (`apps/api/src/platform/mutations.ts`): one transaction holding the change, its audit row,
+  any outbox message and the idempotency key. Routes get the key with `idempotencyOf(request)`.
+  Pre-login endpoints (login, links) are the exception and are safe to repeat by design.
+- **Audit:** `AuditWriter.record` inside the transaction. Values are kept only for fields in
+  its per-target allow-list; anything else (email, phone, password hash) is stored as
+  `[changed]`, because the log can never be scrubbed.
+- **Side effects:** `Outbox.enqueue` inside the transaction; the worker
+  (`apps/api/src/worker.ts`, same image, its own compose service) claims rows with
+  `FOR UPDATE SKIP LOCKED` under a lease, retries with backoff, parks after 8 attempts, and
+  strips the link from the payload once a row is finished.
+- **Auth** (`modules/auth`): argon2id via Node's built-in `crypto.argon2` (Node 24.7+), opaque
+  session token in an HttpOnly SameSite=Lax cookie, only its SHA-256 stored; each session row
+  carries its own idle window. Single-use links come only from `AuthTokens.issue`.
+- **Guards:** `csrfPlugin` (client header + Origin) on every unsafe method; `sessionPlugin`
+  attaches `request.session`; routes use `requireSignedIn` / `requirePermission(action)` with
+  the one permission table in `@wms/contracts`.
+- **Rate limits** are in-process (`platform/rate-limit.ts`): correct for one API instance.
+
 ## Inside the API: three layers, one direction
 `routes → services → repositories → Database`. A layer never reaches past the one below it.
 

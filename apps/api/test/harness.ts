@@ -17,7 +17,9 @@ export interface TestAppOptions {
   urls: DatabaseUrls;
   nodeEnv?: 'test' | 'production';
   /** Adds routes that exist only in tests; runs before the app is ready. */
-  registerRoutes?: (app: FastifyInstance) => void;
+  registerRoutes?: (app: FastifyInstance, db: Database) => void;
+  /** Receives the text of every statement the app runs inside a transaction. */
+  onQuery?: (text: string) => void;
 }
 
 export interface TestApp {
@@ -62,11 +64,15 @@ export class TestApps {
     const logLines: string[] = [];
     const logger = createLogger('debug', { write: (line: string) => void logLines.push(line) });
     // A pool error here would be a test bug; surfacing it as a log line keeps it visible.
-    const db = new Database(config.db, (err) => logger.error({ err }, 'database pool error'));
+    const db = new Database(
+      config.db,
+      (err) => logger.error({ err }, 'database pool error'),
+      options.onQuery ? { onQuery: options.onQuery } : {},
+    );
 
     const app = await buildApp({ config, db, logger });
     this.open.push({ app, db });
-    options.registerRoutes?.(app);
+    options.registerRoutes?.(app, db);
     return { app, logLines };
   }
 

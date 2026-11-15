@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageOf, pageQuerySchema, problemSchema } from '../src/index.js';
+import { can, pageOf, pageQuerySchema, passwordProblem, problemSchema } from '../src/index.js';
 
 describe('pageQuerySchema', () => {
   it('defaults the limit to 25', () => {
@@ -64,5 +64,28 @@ describe('problemSchema', () => {
     const { requestId: _omitted, ...withoutRequestId } = valid;
 
     expect(problemSchema.safeParse(withoutRequestId).success).toBe(false);
+  });
+});
+
+describe('passwordProblem', () => {
+  it('enforces the minimum length and refuses common passwords with decorations', () => {
+    expect(passwordProblem('short-one')).toMatch(/at least 12/);
+    expect(passwordProblem('Password2024!')).toMatch(/too common/);
+    expect(passwordProblem('!!netpoleon123')).toMatch(/too common/);
+    expect(passwordProblem('zzzzzzzzzzzzzz')).toMatch(/repeat/);
+    expect(passwordProblem('x'.repeat(257))).toMatch(/at most 256/);
+    expect(passwordProblem('quiet-harbour-ninety')).toBeNull();
+  });
+});
+
+describe('permission table', () => {
+  it('denies by default and keeps the auditor read-only', () => {
+    expect(can('auditor', 'unit.view')).toBe(true);
+    expect(can('auditor', 'unit.register')).toBe(false);
+    expect(can('manager', 'loan.decide')).toBe(true);
+    expect(can('warehouse', 'loan.decide')).toBe(false);
+    expect(can('partner_member', 'unit.view')).toBe(false);
+    expect(can('partner_admin', 'portal.team')).toBe(true);
+    expect(can('admin', 'portal.book')).toBe(false);
   });
 });

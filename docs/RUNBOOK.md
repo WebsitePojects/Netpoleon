@@ -101,4 +101,18 @@ Written when the feature lands.
 
 ## Create the first administrator
 
-Written when the feature lands (build order step 4, auth).
+No account exists after a fresh install, and no default password exists anywhere. Run this
+once, on the server, after the stack is up:
+
+```sh
+docker compose -f compose.prod.yml run --rm api   node apps/api/dist/cli/create-admin.js --email <their email> --name "<their full name>"
+```
+
+It prints an invitation link that works once, for 72 hours; the person opens it and sets
+their own password. The command refuses to run if any administrator already exists, so it
+cannot be used to add a second admin around the application. Further people are invited from
+**Users** in the app.
+
+Until an email provider is chosen, the worker cannot send email in production: invitation and
+reset emails are retried and then parked as `failed` in the `outbox` table, on purpose, so a
+link never lands in a log. That is why the first link is printed by this command.

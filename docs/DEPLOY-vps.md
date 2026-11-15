@@ -184,6 +184,5 @@ the certificate automatically once the domain resolves to the server.
 These are listed so nobody assumes they exist. Each is written when its feature lands.
 
 - Off-server encrypted backups and the restore drill (`docs/RUNBOOK.md`).
-- Creating the first administrator.
 - Image publishing and registry login.
 - Image vulnerability scanning in CI.

@@ -8,6 +8,24 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **Docker here cannot start when WSL has no distributions.** `docker version` fails on the
+  `dockerDesktopLinuxEngine` pipe and `wsl -l -v` lists nothing; Docker's data is on
+  `E:\DockerData` and `E:` was not attached. Do not reinstall or reset it (other projects'
+  containers live there). Run the tests against a throwaway cluster instead: `initdb` with the
+  binaries in `D:\PostgreSQLin` into a scratch folder, `pg_ctl … -o "-p 55432"`, then set
+  `WMS_TEST_PG_URL`. Never point it at the PostgreSQL service on 5432: it belongs to other
+  projects and the tests create cluster-wide roles.
+- **`corepack pnpm test` runs the db and api suites at the same time, and roles are
+  cluster-wide.** On one shared server each suite's setup reset the role passwords and locked
+  the other out (partner guarantee tests failed only when run together). External-server mode
+  now derives the role passwords from the server URL and takes a server-level advisory lock
+  around role setup.
+- **Node 24.7+ has argon2id built in (`crypto.argon2`).** No native module, no install script,
+  nothing extra in the image. The Docker base `node:24-slim` and CI's `.nvmrc` (24) both
+  resolve to a new enough 24.x; pin a minor if that ever stops being true.
+- **A new CSRF guard breaks every existing POST test that omits the header.** The hardening
+  tests for body size and malformed JSON started returning 403 because the guard runs first.
+  They now send the client header; a test of a later layer must pass the earlier ones.
 - **Check a hand-written encoder against an independent decoder, not against your own table.**
   Comparing the Code 128 bars with `python-barcode` showed differences, but only because that
   library switches to the denser set C for digit runs. Decoding our bars with the library's

@@ -15,7 +15,11 @@ pnpm is not on PATH here: run it as `corepack pnpm …`.
   — the full local gate; tests start Postgres 18 through Testcontainers and need Docker
 - `corepack pnpm build` — compile every package to `dist/`
 - `docker build -f infra/docker/Dockerfile .` — the production image
-- No local Docker? Push to a `feat/*` branch; GitHub Actions runs the same gate with Docker
+- No local Docker? Set `WMS_TEST_PG_URL` to the superuser URL of a DISPOSABLE PostgreSQL 18
+  (for example a throwaway cluster from `initdb` on a spare port); each test run creates and
+  drops its own database there. Or push to a `feat/*` branch; CI runs the gate with Docker
+- `corepack pnpm --filter @wms/api worker` — the outbox and cleanup worker (dev)
+- `corepack pnpm --filter @wms/api create-admin --email … --name "…"` — invite the first admin
 - `graphify . --update` — refresh the code map in `graphify-out/` after structural changes
 
 ## Project memory (auto-loaded)

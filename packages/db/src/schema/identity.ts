@@ -39,6 +39,7 @@ export const sessions = pgTable('sessions', {
   revokedAt: timestamptz('revoked_at'),
   ip: inet('ip'),
   userAgent: text('user_agent'),
+  idleSeconds: integer('idle_seconds').notNull().default(43200),
 });
 
 export const authTokens = pgTable('auth_tokens', {

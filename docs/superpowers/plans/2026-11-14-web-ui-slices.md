@@ -86,7 +86,7 @@ Delivered in four pushes, each green in CI before it reaches `main`.
   only the token hash stored, demo mailbox in place of email), invitations from Users, real
   password change on Profile, partner companies list and detail (contacts, loan history,
   archive), label sheet with QR code and Code 128 barcode, help centre
-- [ ] **2b, API platform and auth:** audit writer, idempotency keys, outbox and worker,
+- [x] **2b, API platform and auth:** audit writer, idempotency keys, outbox and worker,
   permission table, login, sessions, logout, invitation, password reset, rate limits
 - [ ] **2c, API stock and people:** users, partner companies, categories, locations, assets
   (register, edit, move, repair, retire), development seed

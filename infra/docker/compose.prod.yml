@@ -109,6 +109,25 @@ services:
       retries: 4
       start_period: 15s
 
+  # Same image, different command: delivers the outbox (email) and runs the cleanup jobs.
+  # No port: nothing connects to it.
+  worker:
+    <<: *hardened
+    image: ${WMS_IMAGE:?}
+    command: ['node', 'apps/api/dist/worker.js']
+    environment:
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL_STAFF: postgres://wms_staff:${WMS_STAFF_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+      DATABASE_URL_PARTNER: postgres://wms_partner:${WMS_PARTNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [backend]
+    mem_limit: 256m
+    cpus: 0.5
+
   proxy:
     <<: *hardened
     image: caddy:2

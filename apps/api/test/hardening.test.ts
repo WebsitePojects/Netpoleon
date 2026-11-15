@@ -1,4 +1,4 @@
-import { problemSchema } from '@wms/contracts';
+import { CLIENT_HEADER, problemSchema } from '@wms/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from '../src/errors.js';
 import { CLOSED_PORT_URL, TestApps, registerProbeRoutes, type TestApp } from './harness.js';
@@ -47,7 +47,7 @@ describe('error responses', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/probe/echo',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', [CLIENT_HEADER]: 'web' },
       payload: JSON.stringify({ name: 'x'.repeat(1024 * 1024 + 1) }),
     });
 
@@ -61,7 +61,7 @@ describe('error responses', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/probe/echo',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', [CLIENT_HEADER]: 'web' },
       payload: '{"name": ',
     });
 
@@ -75,7 +75,7 @@ describe('error responses', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/probe/echo',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', [CLIENT_HEADER]: 'web' },
       payload: JSON.stringify({ name: 12345 }),
     });
 

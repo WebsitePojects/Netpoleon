@@ -5,15 +5,19 @@
  */
 export class AppError extends Error {
   readonly detail: string | undefined;
+  /** Extra response headers, such as Retry-After on a 429. */
+  readonly headers: Readonly<Record<string, string>>;
 
   constructor(
     readonly status: number,
     readonly code: string,
     title: string,
     detail?: string,
+    headers: Record<string, string> = {},
   ) {
     super(title);
     this.name = 'AppError';
     this.detail = detail;
+    this.headers = headers;
   }
 }
