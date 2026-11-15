@@ -78,6 +78,21 @@ Legend: **S1** built in slice 1 · S2, S3 later.
 - [x] Every table on one `DataTable`: search, filters, sort, row selection, batch actions, CSV export
 - [x] Tab strips with a travelling spring highlight
 
+## Slice 2 checklist
+
+Delivered in four pushes, each green in CI before it reaches `main`.
+
+- [x] **2a, screens on demo data:** password reset and accept-invite pages (single-use links,
+  only the token hash stored, demo mailbox in place of email), invitations from Users, real
+  password change on Profile, partner companies list and detail (contacts, loan history,
+  archive), label sheet with QR code and Code 128 barcode, help centre
+- [ ] **2b, API platform and auth:** audit writer, idempotency keys, outbox and worker,
+  permission table, login, sessions, logout, invitation, password reset, rate limits
+- [ ] **2c, API stock and people:** users, partner companies, categories, locations, assets
+  (register, edit, move, repair, retire), development seed
+- [ ] **2d, wiring:** the web app uses the API when `VITE_API_URL` is set; demo mode stays the
+  default
+
 ## Demo accounts (demo data only, no real system behind them)
 
 | Username | Role |

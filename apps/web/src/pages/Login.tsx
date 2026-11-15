@@ -1,11 +1,13 @@
-import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Eye, EyeOff, Inbox, Lock, Mail, User } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth.js';
 import { Brand, Button, FormError } from '../components/ui.js';
+import { useStore, useWmsState } from '../data/context.js';
+import { formatDateTime } from '../lib/dates.js';
 import { useSubmit } from '../lib/hooks.js';
 
-function LoginArt() {
+export function LoginArt() {
   return (
     <div className="login-art">
       <img src="/img/warehouse.jpg" alt="" />
@@ -20,7 +22,7 @@ function LoginArt() {
   );
 }
 
-function LoginFoot() {
+export function LoginFoot() {
   return (
     <p className="login-foot">
       <strong>Netpoleon WMS</strong>
@@ -40,7 +42,9 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const routeState = location.state as { from?: string; notice?: string } | null;
+  const from = routeState?.from ?? '/';
+  const notice = routeState?.notice ?? null;
   if (user && !submit.pending) return <Navigate to={from} replace />;
 
   const onSubmit = (event: FormEvent) => {
@@ -62,6 +66,12 @@ export function Login() {
             <h2>Welcome Back</h2>
             <p>Sign in to your account</p>
           </header>
+          {notice && (
+            <p className="banner success" role="status">
+              <CircleCheck aria-hidden="true" />
+              {notice}
+            </p>
+          )}
           <label className="input-wrap">
             <span className="sr-only">Username</span>
             <User aria-hidden="true" />
@@ -127,13 +137,18 @@ export function Login() {
 }
 
 export function ForgotPassword() {
+  const store = useStore();
+  const { mailbox } = useWmsState();
   const submit = useSubmit();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    void submit.run(() => setSent(true));
+    void submit.run(() => {
+      store.requestPasswordReset(email);
+      setSent(true);
+    });
   };
 
   return (
@@ -148,8 +163,8 @@ export function ForgotPassword() {
           {sent ? (
             <p className="banner info" role="status">
               <Mail aria-hidden="true" />
-              If an account uses that address, a reset link is on its way. Demo build: no email is
-              sent.
+              If an account uses that address, a reset link is on its way. It works once, for one
+              hour.
             </p>
           ) : (
             <>
@@ -178,6 +193,7 @@ export function ForgotPassword() {
               </Button>
             </>
           )}
+          {sent && <DemoMailbox mails={mailbox.slice(0, 3)} />}
           <Link to="/login" className="link row" style={{ justifyContent: 'center', gap: 6 }}>
             <ArrowLeft aria-hidden="true" width={15} height={15} />
             Back to sign in
@@ -186,5 +202,40 @@ export function ForgotPassword() {
         </form>
       </div>
     </div>
+  );
+}
+
+/**
+ * Demo build only: there is no mail server, so the messages the server would send are shown
+ * here. With the API connected, the email goes out through the outbox and this box is gone.
+ */
+function DemoMailbox({
+  mails,
+}: {
+  mails: { id: number; at: string; to: string; subject: string; link: string }[];
+}) {
+  return (
+    <section className="demo-mailbox" aria-label="Demo mailbox">
+      <h3>
+        <Inbox aria-hidden="true" />
+        Demo mailbox
+      </h3>
+      {mails.length === 0 ? (
+        <p className="muted">No messages. Try an address such as marco@netpoleon.example.</p>
+      ) : (
+        <ul>
+          {mails.map((mail) => (
+            <li key={mail.id}>
+              <span className="muted">
+                To {mail.to} · {formatDateTime(mail.at)}
+              </span>
+              <Link to={mail.link} className="link">
+                {mail.subject}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

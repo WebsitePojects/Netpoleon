@@ -136,7 +136,50 @@ export interface User {
   title: string;
   role: Role;
   active: boolean;
+  /** True from the day the account is added until its owner accepts the invitation. */
+  invited: boolean;
   lastActiveAt: string | null;
+}
+
+export type PartnerType = 'partner' | 'reseller' | 'internal_team' | 'branch';
+
+export interface PartnerContact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+}
+
+/**
+ * A company that borrows units. Loans copy the company name at filing time, so history is
+ * never rewritten; a renamed partner keeps its old names in `aliases` to find that history.
+ */
+export interface Partner {
+  id: string;
+  name: string;
+  aliases: string[];
+  type: PartnerType;
+  archived: boolean;
+  contacts: PartnerContact[];
+  createdAt: string;
+}
+
+/** A single-use link. Only the SHA-256 of the token is kept, as the API does. */
+export interface AuthToken {
+  tokenHash: string;
+  username: string;
+  purpose: 'invite' | 'password_reset';
+  expiresAt: string;
+  usedAt: string | null;
+}
+
+/** Stands in for the email the server would send, so the demo can follow the link. */
+export interface DemoMail {
+  id: number;
+  at: string;
+  to: string;
+  subject: string;
+  link: string;
 }
 
 export interface AuditEntry {
@@ -179,8 +222,13 @@ export interface WmsState {
   movements: Movement[];
   inspections: Inspection[];
   users: User[];
+  partners: Partner[];
+  authTokens: AuthToken[];
+  /** `salt$sha256(salt + password)` for accounts that set their own password. */
+  passwordHashes: Record<string, string>;
+  mailbox: DemoMail[];
   audit: AuditEntry[];
   settings: Settings;
   readAlertIds: string[];
-  counters: { loan: number; movement: number; inspection: number; audit: number };
+  counters: { loan: number; movement: number; inspection: number; audit: number; mail: number };
 }

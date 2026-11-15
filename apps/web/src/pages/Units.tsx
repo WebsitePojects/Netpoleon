@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Plus } from 'lucide-react';
+import { ArrowRightLeft, Plus, Tags } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
@@ -143,11 +143,16 @@ export function Units() {
         title="Demo Units"
         lead="Complete list of demo assets with real-time status"
         actions={
-          can('unit.register') && (
-            <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
-              Add Asset
+          <>
+            <Button icon={Tags} onClick={() => void navigate('/units/labels')}>
+              Print labels
             </Button>
-          )
+            {can('unit.register') && (
+              <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+                Add Asset
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -165,17 +170,23 @@ export function Units() {
           }}
           filters={filters}
           onRowClick={(unit) => void navigate(`/units/${unit.code}`)}
-          batchActions={
-            can('unit.move')
+          batchActions={[
+            {
+              label: 'Print labels',
+              icon: Tags,
+              run: (units) =>
+                void navigate(`/units/labels?codes=${units.map((unit) => unit.code).join(',')}`),
+            },
+            ...(can('unit.move')
               ? [
                   {
                     label: 'Move to shelf',
                     icon: ArrowRightLeft,
-                    run: (units, clear) => setMoving({ units, clear }),
+                    run: (units: Unit[], clear: () => void) => setMoving({ units, clear }),
                   },
                 ]
-              : []
-          }
+              : []),
+          ]}
           exportCsv={{
             name: 'demo-units',
             header: [

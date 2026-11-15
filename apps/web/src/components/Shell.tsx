@@ -2,9 +2,11 @@ import {
   ArrowLeftRight,
   Bell,
   Boxes,
+  Building2,
   ChartColumn,
   ChevronDown,
   ClipboardCheck,
+  CircleHelp,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -51,6 +53,7 @@ const NAV: NavItem[] = [
   { to: '/inspection', label: 'Inspection', icon: ClipboardCheck },
   { to: '/reports', label: 'Reports', icon: ChartColumn },
   { to: '/users', label: 'Users', icon: Users },
+  { to: '/partners', label: 'Partners', icon: Building2 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -379,7 +382,9 @@ function PersonMenu() {
   const close = useCallback(() => setOpen(false), []);
   useDismiss(box, open, close);
 
-  const others = users.filter((item) => item.active && item.username !== user.username);
+  const others = users.filter(
+    (item) => item.active && !item.invited && item.username !== user.username,
+  );
 
   return (
     <div className="person" ref={box}>
@@ -412,6 +417,18 @@ function PersonMenu() {
           >
             <UserIcon aria-hidden="true" />
             My profile
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setOpen(false);
+              void navigate('/help');
+            }}
+          >
+            <CircleHelp aria-hidden="true" />
+            Help centre
           </button>
           <div className="menu-sep" />
           <p className="menu-label">Theme</p>

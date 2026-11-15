@@ -336,12 +336,24 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
   const length = startDate && dueDate ? daysBetween(startDate, dueDate) : 0;
   const categoryName = new Map(state.categories.map((item) => [item.code, item.name]));
 
-  /** Companies already on file, offered as suggestions so repeat borrowers are typed once. */
+  /**
+   * Active partner companies, offered as suggestions; picking one fills in its first contact.
+   * Archived companies are left out because the store refuses requests for them.
+   */
   const knownBorrowers = useMemo(() => {
     const seen = new Map<string, Loan['borrower']>();
-    for (const loan of state.loans) seen.set(loan.borrower.company, loan.borrower);
+    for (const partner of state.partners) {
+      if (partner.archived) continue;
+      const contact = partner.contacts[0];
+      seen.set(partner.name, {
+        company: partner.name,
+        name: contact?.name ?? '',
+        email: contact?.email ?? '',
+        phone: contact?.phone ?? '',
+      });
+    }
     return seen;
-  }, [state.loans]);
+  }, [state.partners]);
 
   return (
     <ActionDialog
@@ -390,7 +402,7 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
             onChange={(value) => {
               setCompany(value);
               const known = knownBorrowers.get(value);
-              if (known) {
+              if (known?.name) {
                 setName(known.name);
                 setEmail(known.email);
                 setPhone(known.phone);

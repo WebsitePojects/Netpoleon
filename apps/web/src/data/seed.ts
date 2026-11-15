@@ -12,6 +12,7 @@ import type {
   Unit,
   UnitStatus,
   User,
+  Partner,
   WmsState,
 } from './types.js';
 
@@ -23,7 +24,7 @@ import type {
 export const DEMO_PASSWORD = '123456';
 export const DEMO_ADMIN_USERNAME = 'lara';
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 interface ModelSpec {
   brand: string;
@@ -155,6 +156,48 @@ function borrower(name: string, company: string, domain: string): Borrower {
   return { name, company, email: `${local}@${domain}`, phone: `0917 000 ${suffix}` };
 }
 
+/** Which borrowing companies are Netpoleon's own teams or branches rather than outside partners. */
+const PARTNER_TYPES: Record<string, Partner['type']> = {
+  'Netpoleon Presales Team': 'internal_team',
+  'Netpoleon Cebu Branch': 'branch',
+  'Metro Cloud Partners': 'reseller',
+  'Visayas Integrators': 'reseller',
+};
+
+/** One partner record per company that appears on a loan, with its people as contacts. */
+function buildPartners(now: Date): Partner[] {
+  const byName = new Map<string, Partner>();
+  BORROWERS.forEach((person, index) => {
+    const partner = byName.get(person.company) ?? {
+      id: `org-${String(index + 1).padStart(3, '0')}`,
+      name: person.company,
+      aliases: [],
+      type: PARTNER_TYPES[person.company] ?? 'partner',
+      archived: false,
+      contacts: [],
+      createdAt: new Date(now.getTime() - (400 - index * 17) * 86_400_000).toISOString(),
+    };
+    partner.contacts.push({
+      id: `contact-${index + 1}`,
+      name: person.name,
+      email: person.email,
+      phone: person.phone,
+    });
+    byName.set(person.company, partner);
+  });
+  // A company with no loans yet, so the list is not only borrowers.
+  byName.set('Southern Edge Solutions', {
+    id: 'org-099',
+    name: 'Southern Edge Solutions',
+    aliases: [],
+    type: 'partner',
+    archived: false,
+    contacts: [],
+    createdAt: new Date(now.getTime() - 9 * 86_400_000).toISOString(),
+  });
+  return [...byName.values()];
+}
+
 const DEFAULT_SETTINGS: Settings = {
   companyName: 'Netpoleon Solutions Philippines, Inc.',
   warehouseName: 'Main Warehouse',
@@ -237,6 +280,7 @@ function user(
     title,
     role,
     active: true,
+    invited: false,
     lastActiveAt,
     email: `${username}@netpoleon.example`,
   };
@@ -597,6 +641,10 @@ export function buildSeed(now: Date): WmsState {
     movements,
     inspections,
     users: buildUsers(now),
+    partners: buildPartners(now),
+    authTokens: [],
+    passwordHashes: {},
+    mailbox: [],
     audit,
     settings: { ...DEFAULT_SETTINGS },
     readAlertIds: [],
@@ -605,6 +653,7 @@ export function buildSeed(now: Date): WmsState {
       movement: movements.length,
       inspection: inspections.length,
       audit: audit.length,
+      mail: 0,
     },
   };
 }

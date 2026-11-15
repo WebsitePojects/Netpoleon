@@ -279,3 +279,112 @@ describe('persistence', () => {
     expect(reloaded.getState().units).toHaveLength(482);
   });
 });
+
+describe('invitations and password resets', () => {
+  const tokenFrom = (link: string) => link.split('/').at(-1) ?? '';
+
+  it('lets an invited user in only after they accept, and the link works once', () => {
+    const token = store.addUser('lara', {
+      username: 'nina',
+      name: 'Nina Cruz',
+      email: 'nina@netpoleon.example',
+      title: '',
+      role: 'warehouse',
+    });
+    expect(store.getState().users.find((user) => user.username === 'nina')?.invited).toBe(true);
+    expect(store.inspectToken(token, 'invite')?.username).toBe('nina');
+    expect(store.inspectToken(token, 'password_reset')).toBeNull();
+
+    expect(() => store.completeToken(token, 'invite', 'short')).toThrow(WmsError);
+    expect(() => store.completeToken(token, 'invite', 'Password1234!')).toThrow(/too common/);
+    store.completeToken(token, 'invite', 'blue-shelf-forty-two');
+
+    expect(store.getState().users.find((user) => user.username === 'nina')?.invited).toBe(false);
+    expect(store.checkOwnPassword('nina', 'blue-shelf-forty-two')).toBe(true);
+    expect(store.checkOwnPassword('nina', 'wrong-password-here')).toBe(false);
+    expect(() => store.completeToken(token, 'invite', 'another-long-phrase')).toThrow(
+      /expired or was already used/,
+    );
+  });
+
+  it('keeps only the hash of a token and voids the old link on resend', () => {
+    const first = store.addUser('lara', {
+      username: 'nina',
+      name: 'Nina Cruz',
+      email: 'nina@netpoleon.example',
+      title: '',
+      role: 'warehouse',
+    });
+    // The mailbox stands in for the email, which carries the link; the token records must not.
+    expect(JSON.stringify(store.getState().authTokens)).not.toContain(first);
+    const second = store.resendInvite('lara', 'nina');
+    expect(store.inspectToken(first, 'invite')).toBeNull();
+    expect(store.inspectToken(second, 'invite')?.username).toBe('nina');
+  });
+
+  it('expires a reset link after an hour and says nothing about unknown addresses', () => {
+    let now = NOW;
+    const clocked = new WmsStore(new MemoryStorage(), () => now);
+    clocked.requestPasswordReset('nobody@nowhere.example');
+    expect(clocked.getState().mailbox).toHaveLength(0);
+
+    clocked.requestPasswordReset('MARCO@netpoleon.example');
+    const mail = clocked.getState().mailbox[0];
+    expect(mail?.to).toBe('marco@netpoleon.example');
+    const token = tokenFrom(mail?.link ?? '');
+    expect(clocked.inspectToken(token, 'password_reset')?.username).toBe('marco');
+
+    now = new Date(NOW.getTime() + 61 * 60_000);
+    expect(clocked.inspectToken(token, 'password_reset')).toBeNull();
+  });
+
+  it('refuses a wrong current password when changing it', () => {
+    expect(() =>
+      store.changePassword('marco', 'not-the-password', 'blue-shelf-forty-two', '123456'),
+    ).toThrow(/current password/);
+    store.changePassword('marco', '123456', 'blue-shelf-forty-two', '123456');
+    expect(store.checkOwnPassword('marco', 'blue-shelf-forty-two')).toBe(true);
+  });
+});
+
+describe('partner companies', () => {
+  it('seeds one partner per borrowing company', () => {
+    const { partners, loans } = store.getState();
+    for (const loan of loans) {
+      expect(partners.some((partner) => partner.name === loan.borrower.company)).toBe(true);
+    }
+  });
+
+  it('keeps loan history after a rename and refuses a duplicate name', () => {
+    const abc = store.getState().partners.find((p) => p.name === 'ABC Technologies Inc.');
+    if (!abc) throw new Error('seed is missing ABC Technologies Inc.');
+    store.updatePartner('lara', abc.id, { name: 'ABC Tech Holdings', type: 'partner' });
+    const renamed = store.getState().partners.find((p) => p.id === abc.id);
+    if (!renamed) throw new Error('partner vanished');
+    expect(store.partnerOwnsLoan(renamed, 'ABC Technologies Inc.')).toBe(true);
+    expect(() =>
+      store.addPartner('lara', { name: 'abc technologies inc.', type: 'partner' }),
+    ).toThrow(/already exists/);
+  });
+
+  it('will not archive a company with units out, and only admins manage partners', () => {
+    const partner = store.addPartner('lara', { name: 'Archive Test Co', type: 'partner' });
+    expect(() => store.addPartner('marco', { name: 'Not Allowed Co', type: 'partner' })).toThrow(
+      /role does not allow/,
+    );
+    store.setPartnerArchived('lara', partner.id, true);
+    expect(store.getState().partners.find((p) => p.id === partner.id)?.archived).toBe(true);
+
+    const busy = store
+      .getState()
+      .partners.find((p) =>
+        store
+          .getState()
+          .loans.some(
+            (loan) => loan.status === 'released' && store.partnerOwnsLoan(p, loan.borrower.company),
+          ),
+      );
+    if (!busy) throw new Error('seed has no partner with a unit out');
+    expect(() => store.setPartnerArchived('lara', busy.id, true)).toThrow(/still has open/);
+  });
+});

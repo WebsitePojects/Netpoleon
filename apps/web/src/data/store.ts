@@ -1,4 +1,6 @@
 import { addDays, daysBetween, toDateKey } from '../lib/dates.js';
+import { passwordProblem } from '../lib/passwords.js';
+import { randomToken, sha256Hex } from '../lib/sha256.js';
 import { can, type Action } from './permissions.js';
 import {
   buildSeed,
@@ -14,6 +16,9 @@ import type {
   InspectionOutcome,
   Loan,
   MovementType,
+  Partner,
+  PartnerContact,
+  PartnerType,
   Role,
   Settings,
   Unit,
@@ -83,6 +88,21 @@ export interface InspectionInput {
   /** Shelf to put the unit on. Required unless the outcome is `repair`. */
   locationId: string | null;
 }
+
+export interface PartnerInput {
+  name: string;
+  type: PartnerType;
+}
+
+export interface ContactInput {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+/** How long a link stays usable. Short, because whoever holds it can set the password. */
+const INVITE_TTL_HOURS = 72;
+const RESET_TTL_HOURS = 1;
 
 export interface UserInput {
   username: string;
@@ -251,6 +271,13 @@ export class WmsStore {
   // ── Borrowing ────────────────────────────────────────────────────────────
 
   createRequest(actor: string, input: RequestInput): Loan {
+    const company = input.borrower.company.trim().toLowerCase();
+    const archived = this.state.partners.find(
+      (partner) => partner.archived && this.partnerOwnsLoan(partner, company),
+    );
+    if (archived) {
+      throw new WmsError(`${archived.name} is archived. Restore it before filing a request.`);
+    }
     const draft = this.draftFor(actor, 'loan.request');
     const sample = draft.units.find(
       (unit) =>
@@ -523,7 +550,8 @@ export class WmsStore {
 
   // ── Users and settings ───────────────────────────────────────────────────
 
-  addUser(actor: string, input: UserInput): void {
+  /** Adds the account as invited and returns the link token, which is shown once. */
+  addUser(actor: string, input: UserInput): string {
     const draft = this.draftFor(actor, 'users.manage');
     const username = input.username.trim().toLowerCase();
     if (!USERNAME_PATTERN.test(username)) {
@@ -543,11 +571,205 @@ export class WmsStore {
       title: input.title.trim(),
       role: input.role,
       active: true,
+      invited: true,
       lastActiveAt: null,
     };
     draft.users = [...draft.users, user];
-    this.audit(draft, actor, 'user.added', username, `Role ${input.role}`);
+    const token = this.issueToken(draft, user, 'invite');
+    this.audit(draft, actor, 'user.invited', username, `Role ${input.role}`);
     this.commit(draft);
+    return token;
+  }
+
+  /** Replaces any open invitation with a fresh link; the old one stops working. */
+  resendInvite(actor: string, username: string): string {
+    const draft = this.draftFor(actor, 'users.manage');
+    const user = this.userIn(draft, username);
+    if (!user.invited) throw new WmsError(`${user.name} has already accepted the invitation.`);
+    const token = this.issueToken(draft, user, 'invite');
+    this.audit(draft, actor, 'user.invite_resent', username, '');
+    this.commit(draft);
+    return token;
+  }
+
+  /**
+   * Starts a password reset. Says nothing about whether the address exists: the caller shows
+   * the same message either way, so the form cannot be used to find accounts.
+   */
+  requestPasswordReset(email: string): void {
+    const address = email.trim().toLowerCase();
+    const user = this.state.users.find(
+      (item) => item.email.toLowerCase() === address && item.active && !item.invited,
+    );
+    if (!user) return;
+    const draft = { ...this.state };
+    this.issueToken(draft, user, 'password_reset');
+    this.audit(draft, user.username, 'user.password_reset_requested', user.username, '');
+    this.commit(draft);
+  }
+
+  /** Who a link belongs to, or null when it is unknown, used or expired. */
+  inspectToken(token: string, purpose: 'invite' | 'password_reset'): User | null {
+    const record = this.openToken(token, purpose);
+    if (!record) return null;
+    return this.state.users.find((user) => user.username === record.username) ?? null;
+  }
+
+  /** Spends the link once and sets the password. A second use of the same link is refused. */
+  completeToken(token: string, purpose: 'invite' | 'password_reset', password: string): User {
+    const record = this.openToken(token, purpose);
+    if (!record) {
+      throw new WmsError('This link has expired or was already used. Ask for a new one.');
+    }
+    const problem = passwordProblem(password, this.state.settings.passwordMinLength);
+    if (problem) throw new WmsError(problem);
+    const draft = { ...this.state };
+    const user = this.userIn(draft, record.username);
+    if (!user.active) throw new WmsError('This account is deactivated. Contact an administrator.');
+    const now = this.now().toISOString();
+    draft.authTokens = draft.authTokens.map((item) =>
+      item.tokenHash === record.tokenHash ? { ...item, usedAt: now } : item,
+    );
+    draft.passwordHashes = {
+      ...draft.passwordHashes,
+      [user.username]: this.hashPassword(password),
+    };
+    draft.users = draft.users.map((item) =>
+      item.username === user.username ? { ...item, invited: false } : item,
+    );
+    this.audit(
+      draft,
+      user.username,
+      purpose === 'invite' ? 'user.invite_accepted' : 'user.password_reset',
+      user.username,
+      '',
+    );
+    this.commit(draft);
+    return { ...user, invited: false };
+  }
+
+  /**
+   * True when the password is right for the account. Accounts that never set their own
+   * password still use the shared demo password, which the caller checks.
+   */
+  checkOwnPassword(username: string, password: string): boolean | null {
+    const stored = this.state.passwordHashes[username];
+    if (!stored) return null;
+    const [salt = '', hash] = stored.split('$');
+    return sha256Hex(salt + password) === hash;
+  }
+
+  changePassword(actor: string, current: string, next: string, demoPassword: string): void {
+    const user = this.userIn(this.state, actor);
+    const own = this.checkOwnPassword(actor, current);
+    if (own === false || (own === null && current !== demoPassword)) {
+      throw new WmsError('The current password is not right.');
+    }
+    const problem = passwordProblem(next, this.state.settings.passwordMinLength);
+    if (problem) throw new WmsError(problem);
+    const draft = { ...this.state };
+    draft.passwordHashes = { ...draft.passwordHashes, [user.username]: this.hashPassword(next) };
+    this.audit(draft, actor, 'user.password_changed', actor, '');
+    this.commit(draft);
+  }
+
+  // ── Partner companies ────────────────────────────────────────────────────
+
+  addPartner(actor: string, input: PartnerInput): Partner {
+    const draft = this.draftFor(actor, 'partners.manage');
+    const name = required(input.name, 'Company name');
+    this.assertPartnerNameFree(draft, name, null);
+    const partner: Partner = {
+      id: `org-${randomToken().slice(0, 10)}`,
+      name,
+      aliases: [],
+      type: input.type,
+      archived: false,
+      contacts: [],
+      createdAt: this.now().toISOString(),
+    };
+    draft.partners = [...draft.partners, partner];
+    this.audit(draft, actor, 'partner.added', name, input.type);
+    this.commit(draft);
+    return partner;
+  }
+
+  updatePartner(actor: string, id: string, input: PartnerInput): void {
+    const draft = this.draftFor(actor, 'partners.manage');
+    const partner = this.partnerIn(draft, id);
+    const name = required(input.name, 'Company name');
+    this.assertPartnerNameFree(draft, name, id);
+    const aliases =
+      name === partner.name ? partner.aliases : [...new Set([...partner.aliases, partner.name])];
+    draft.partners = draft.partners.map((item) =>
+      item.id === id ? { ...item, name, aliases, type: input.type } : item,
+    );
+    this.audit(draft, actor, 'partner.updated', name, input.type);
+    this.commit(draft);
+  }
+
+  /** Archived companies keep their history but cannot borrow; nothing is deleted. */
+  setPartnerArchived(actor: string, id: string, archived: boolean): void {
+    const draft = this.draftFor(actor, 'partners.manage');
+    const partner = this.partnerIn(draft, id);
+    if (archived) {
+      const open = draft.loans.some(
+        (loan) =>
+          this.partnerOwnsLoan(partner, loan.borrower.company) &&
+          ['pending', 'approved', 'released'].includes(loan.status),
+      );
+      if (open) {
+        throw new WmsError(
+          `${partner.name} still has open requests or units out. Close them before archiving.`,
+        );
+      }
+    }
+    draft.partners = draft.partners.map((item) => (item.id === id ? { ...item, archived } : item));
+    this.audit(draft, actor, archived ? 'partner.archived' : 'partner.restored', partner.name, '');
+    this.commit(draft);
+  }
+
+  addPartnerContact(actor: string, id: string, input: ContactInput): void {
+    const draft = this.draftFor(actor, 'partners.manage');
+    const partner = this.partnerIn(draft, id);
+    const email = required(input.email, 'Email');
+    if (!EMAIL_PATTERN.test(email)) throw new WmsError('Enter a valid email address.');
+    if (partner.contacts.some((contact) => contact.email.toLowerCase() === email.toLowerCase())) {
+      throw new WmsError(`${email} is already a contact of ${partner.name}.`);
+    }
+    const contact: PartnerContact = {
+      id: `contact-${randomToken().slice(0, 10)}`,
+      name: required(input.name, 'Name'),
+      email,
+      phone: input.phone.trim(),
+    };
+    draft.partners = draft.partners.map((item) =>
+      item.id === id ? { ...item, contacts: [...item.contacts, contact] } : item,
+    );
+    // Contact details are personal data: the audit entry names the company, not the person.
+    this.audit(draft, actor, 'partner.contact_added', partner.name, '');
+    this.commit(draft);
+  }
+
+  removePartnerContact(actor: string, id: string, contactId: string): void {
+    const draft = this.draftFor(actor, 'partners.manage');
+    const partner = this.partnerIn(draft, id);
+    draft.partners = draft.partners.map((item) =>
+      item.id === id
+        ? { ...item, contacts: item.contacts.filter((contact) => contact.id !== contactId) }
+        : item,
+    );
+    this.audit(draft, actor, 'partner.contact_removed', partner.name, '');
+    this.commit(draft);
+  }
+
+  /** Loans copy the company name, so a partner owns every loan filed under any of its names. */
+  partnerOwnsLoan(partner: Partner, company: string): boolean {
+    const name = company.toLowerCase();
+    return (
+      partner.name.toLowerCase() === name ||
+      partner.aliases.some((alias) => alias.toLowerCase() === name)
+    );
   }
 
   updateUser(actor: string, username: string, patch: Omit<UserInput, 'username'>): void {
@@ -658,6 +880,79 @@ export class WmsStore {
   }
 
   // ── Internals ────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a link for `user`, voiding any open link with the same purpose, and drops the email
+   * the server would send into the demo mailbox. Returns the raw token; only its hash is kept.
+   */
+  private issueToken(draft: WmsState, user: User, purpose: 'invite' | 'password_reset'): string {
+    const token = randomToken();
+    const now = this.now();
+    const hours = purpose === 'invite' ? INVITE_TTL_HOURS : RESET_TTL_HOURS;
+    const voided = draft.authTokens.map((item) =>
+      item.username === user.username && item.purpose === purpose && !item.usedAt
+        ? { ...item, usedAt: now.toISOString() }
+        : item,
+    );
+    draft.authTokens = [
+      ...voided,
+      {
+        tokenHash: sha256Hex(token),
+        username: user.username,
+        purpose,
+        expiresAt: new Date(now.getTime() + hours * 3_600_000).toISOString(),
+        usedAt: null,
+      },
+    ];
+    const link = purpose === 'invite' ? `/accept-invite/${token}` : `/reset-password/${token}`;
+    draft.counters = { ...draft.counters, mail: draft.counters.mail + 1 };
+    draft.mailbox = [
+      {
+        id: draft.counters.mail,
+        at: now.toISOString(),
+        to: user.email,
+        subject:
+          purpose === 'invite'
+            ? 'You are invited to Netpoleon WMS'
+            : 'Reset your Netpoleon WMS password',
+        link,
+      },
+      ...draft.mailbox,
+    ].slice(0, 20);
+    return token;
+  }
+
+  private openToken(token: string, purpose: 'invite' | 'password_reset') {
+    const hash = sha256Hex(token);
+    const now = this.now().toISOString();
+    return (
+      this.state.authTokens.find(
+        (item) =>
+          item.tokenHash === hash &&
+          item.purpose === purpose &&
+          item.usedAt === null &&
+          item.expiresAt > now,
+      ) ?? null
+    );
+  }
+
+  private hashPassword(password: string): string {
+    const salt = randomToken().slice(0, 16);
+    return `${salt}$${sha256Hex(salt + password)}`;
+  }
+
+  private partnerIn(draft: WmsState, id: string): Partner {
+    const partner = draft.partners.find((item) => item.id === id);
+    if (!partner) throw new WmsError('That partner company no longer exists.');
+    return partner;
+  }
+
+  private assertPartnerNameFree(draft: WmsState, name: string, exceptId: string | null): void {
+    const taken = draft.partners.some(
+      (item) => item.id !== exceptId && this.partnerOwnsLoan(item, name),
+    );
+    if (taken) throw new WmsError(`A partner named "${name}" already exists.`);
+  }
 
   private load(): WmsState {
     const raw = this.storage.getItem(STORAGE_KEY);

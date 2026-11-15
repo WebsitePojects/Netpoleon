@@ -56,7 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState<string | null>(readSession);
 
   // Looked up on every render, so deactivating an account signs it out everywhere at once.
-  const user = users.find((item) => item.username === username && item.active) ?? null;
+  const user =
+    users.find((item) => item.username === username && item.active && !item.invited) ?? null;
 
   const signIn = useCallback(
     (name: string, password: string, remember: boolean): string | null => {
@@ -64,9 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isBypass = trimmed === '' && password === '';
       const target = isBypass ? DEMO_ADMIN_USERNAME : trimmed;
       const account = store.getState().users.find((item) => item.username === target);
-      const accepted = isBypass || password === DEMO_PASSWORD;
+      // An account that set its own password (invite or reset) must use it; the rest still
+      // share the demo password.
+      const own = account ? store.checkOwnPassword(account.username, password) : null;
+      const accepted = isBypass || own === true || (own === null && password === DEMO_PASSWORD);
       // One message for every failure, so the form never reveals which usernames exist.
-      if (!account || !account.active || !accepted) return 'Incorrect username or password.';
+      if (!account || !account.active || account.invited || !accepted) {
+        return 'Incorrect username or password.';
+      }
       signedOutOnPurpose = false;
       writeSession(account.username, remember);
       setUsername(account.username);

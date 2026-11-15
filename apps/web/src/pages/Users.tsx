@@ -1,4 +1,4 @@
-import { Check, Pencil, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { Check, Copy, Mail, Pencil, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
@@ -9,6 +9,7 @@ import { ActionDialog } from '../components/dialogs.js';
 import {
   Avatar,
   Button,
+  Dialog,
   Field,
   PageHead,
   Switch,
@@ -50,6 +51,7 @@ export function Users() {
   const tab: TabId = isTabId(tabParam) ? tabParam : 'users';
   const { can: allowed } = useAuth();
   const [editing, setEditing] = useState<User | 'new' | null>(null);
+  const [invite, setInvite] = useState<{ name: string; token: string } | null>(null);
 
   return (
     <div className="page">
@@ -75,19 +77,37 @@ export function Users() {
             onChange={(next) => setParams({ tab: next }, { replace: true })}
             label="Users"
           />
-          {tab === 'users' && <UserTable onEdit={setEditing} />}
+          {tab === 'users' && (
+            <UserTable
+              onEdit={setEditing}
+              onInvited={(name, token) => setInvite({ name, token })}
+            />
+          )}
           {tab === 'roles' && <RoleMatrix />}
           {tab === 'activity' && <ActivityLog />}
         </div>
       )}
       {editing && (
-        <UserDialog user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
+        <UserDialog
+          user={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onInvited={(name, token) => setInvite({ name, token })}
+        />
+      )}
+      {invite && (
+        <InviteLinkDialog name={invite.name} token={invite.token} onClose={() => setInvite(null)} />
       )}
     </div>
   );
 }
 
-function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
+function UserTable({
+  onEdit,
+  onInvited,
+}: {
+  onEdit: (user: User) => void;
+  onInvited: (name: string, token: string) => void;
+}) {
   const { users } = useWmsState();
   const store = useStore();
   const me = useCurrentUser();
@@ -168,14 +188,19 @@ function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
       width: '0.7fr',
       skeleton: 40,
       sort: (user) => (user.active ? 0 : 1),
-      cell: (user) => (
-        <Switch
-          checked={user.active}
-          disabled={!manage}
-          label={`${user.name} can sign in`}
-          onChange={(next) => toggle(user, next)}
-        />
-      ),
+      cell: (user) =>
+        user.invited ? (
+          <span className="chip" data-tone="for_repair">
+            Invited
+          </span>
+        ) : (
+          <Switch
+            checked={user.active}
+            disabled={!manage}
+            label={`${user.name} can sign in`}
+            onChange={(next) => toggle(user, next)}
+          />
+        ),
     },
     ...(manage
       ? [
@@ -187,9 +212,27 @@ function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
             width: '0.7fr',
             skeleton: 60,
             cell: (user: User) => (
-              <Button size="sm" icon={Pencil} onClick={() => onEdit(user)}>
-                Edit
-              </Button>
+              <span className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                {user.invited && (
+                  <Button
+                    size="sm"
+                    icon={Mail}
+                    onClick={() => {
+                      try {
+                        onInvited(user.name, store.resendInvite(me.username, user.username));
+                      } catch (error) {
+                        if (!(error instanceof WmsError)) throw error;
+                        toast(error.message, 'error');
+                      }
+                    }}
+                  >
+                    Resend invite
+                  </Button>
+                )}
+                <Button size="sm" icon={Pencil} onClick={() => onEdit(user)}>
+                  Edit
+                </Button>
+              </span>
             ),
           },
         ]
@@ -401,7 +444,15 @@ function ActivityLog() {
   );
 }
 
-function UserDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
+function UserDialog({
+  user,
+  onClose,
+  onInvited,
+}: {
+  user: User | null;
+  onClose: () => void;
+  onInvited: (name: string, token: string) => void;
+}) {
   const store = useStore();
   const me = useCurrentUser();
   const toast = useToast();
@@ -415,7 +466,9 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
     <ActionDialog
       title={user ? `Edit ${user.name}` : 'Add a user'}
       description={
-        user ? undefined : 'Demo build: the new account signs in with the shared demo password.'
+        user
+          ? undefined
+          : 'They get a link to set their own password. The link works once, for 72 hours.'
       }
       confirmLabel={user ? 'Save changes' : 'Add user'}
       width={560}
@@ -425,8 +478,9 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
           store.updateUser(me.username, user.username, { name, email, title, role });
           toast(`${name} updated`);
         } else {
-          store.addUser(me.username, { username, name, email, title, role });
-          toast(`${name} added`);
+          const token = store.addUser(me.username, { username, name, email, title, role });
+          toast(`${name.trim()} invited`);
+          onInvited(name.trim(), token);
         }
       }}
     >
@@ -468,5 +522,57 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
         </Field>
       </div>
     </ActionDialog>
+  );
+}
+
+/**
+ * Shows the invitation link once. With the API connected, the link is emailed instead; the
+ * demo has no mail server, so the administrator hands it over.
+ */
+function InviteLinkDialog({
+  name,
+  token,
+  onClose,
+}: {
+  name: string;
+  token: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const link = `${window.location.origin}/accept-invite/${token}`;
+  const copy = () => {
+    void navigator.clipboard
+      .writeText(link)
+      .then(() => toast('Invitation link copied'))
+      .catch(() => toast('Copy did not work; select the link and copy it by hand', 'error'));
+  };
+  return (
+    <Dialog
+      title={`Invitation for ${name}`}
+      description="Send this link to them. It works once and expires in 72 hours."
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Done</Button>
+          <Button variant="primary" icon={Copy} onClick={copy}>
+            Copy link
+          </Button>
+        </>
+      }
+    >
+      <div className="invite-link">
+        <input
+          className="input mono"
+          readOnly
+          value={link}
+          aria-label="Invitation link"
+          onFocus={(event) => event.target.select()}
+        />
+      </div>
+      <p className="muted" style={{ marginTop: 10 }}>
+        Demo build: no email is sent, so copy the link. It also appears in the demo mailbox on the
+        Forgot password screen.
+      </p>
+    </Dialog>
   );
 }

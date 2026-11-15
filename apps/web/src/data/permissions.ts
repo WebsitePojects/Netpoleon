@@ -16,6 +16,7 @@ export type Action =
   | 'inspection.perform'
   | 'reports.export'
   | 'users.manage'
+  | 'partners.manage'
   | 'settings.manage';
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -33,6 +34,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   'inspection.perform': 'Inspect and restock',
   'reports.export': 'Export reports',
   'users.manage': 'Manage users',
+  'partners.manage': 'Manage partner companies',
   'settings.manage': 'Change settings',
 };
 
@@ -44,7 +46,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 };
 
 export const ROLE_SUMMARIES: Record<Role, string> = {
-  admin: 'Everything, plus users and settings',
+  admin: 'Everything, plus users, partner companies and settings',
   manager: 'Approves requests, extends loans, sees all reports',
   warehouse: 'Registers, stocks, releases, receives, inspects',
   auditor: 'Reads everything, changes nothing',

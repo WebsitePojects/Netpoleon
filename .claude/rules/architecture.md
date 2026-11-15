@@ -27,6 +27,13 @@ Imports go down that table only. A package never imports from `apps/`.
   `page`, `sort`, filter ids) live in the address.
 - Batch actions call the store once per row through `runBatch`, which skips rows the store
   refuses and reports the count, so a mixed selection never half-fails silently.
+- Partner companies live in the demo store. Loans copy the company name when filed, so a
+  rename keeps the old name in `aliases` and history still matches; nothing is rewritten.
+- Single-use links (invitation, password reset) keep only the SHA-256 of the token
+  (`src/lib/sha256.ts`), as the API does. The demo mailbox shows the email the server would
+  send; it disappears when the API is connected.
+- Labels print the asset code as a QR code and a Code 128 (set B) barcode
+  (`src/lib/barcode.ts`, `src/components/AssetLabel.tsx`), sized in millimetres.
 - Tab strips use `Tabs` (`src/components/ui.tsx`); the highlight is one element moved by the
   spring in `useLiquidInk` (`src/lib/hooks.ts`).
 

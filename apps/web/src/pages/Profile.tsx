@@ -3,7 +3,8 @@ import { Info, Monitor, Moon, Sun } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useCurrentUser } from '../auth/auth.js';
 import { Avatar, Button, Field, FormError, PageHead, useToast } from '../components/ui.js';
-import { useWmsState } from '../data/context.js';
+import { useStore, useWmsState } from '../data/context.js';
+import { DEMO_PASSWORD } from '../data/seed.js';
 import {
   ACTION_LABELS,
   can,
@@ -12,6 +13,7 @@ import {
   type Action,
 } from '../data/permissions.js';
 import { formatDateTime } from '../lib/dates.js';
+import { passwordProblem } from '../lib/passwords.js';
 import { usePageReady, useSubmit, useTheme, type ThemeChoice } from '../lib/hooks.js';
 
 const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
@@ -25,6 +27,7 @@ const RECENT_ACTIONS = 8;
 export function Profile() {
   const ready = usePageReady();
   const user = useCurrentUser();
+  const store = useStore();
   const { audit, settings } = useWmsState();
   const [theme, setTheme] = useTheme();
   const toast = useToast();
@@ -47,15 +50,17 @@ export function Profile() {
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (next.length < settings.passwordMinLength) {
-      setMismatch(`Use at least ${settings.passwordMinLength} characters.`);
+    const problem = passwordProblem(next, settings.passwordMinLength);
+    if (problem) {
+      setMismatch(problem);
       return;
     }
     setMismatch(null);
     void submit.run(() => {
+      store.changePassword(user.username, current, next, DEMO_PASSWORD);
       setCurrent('');
       setNext('');
-      toast('Demo build: the password was not changed');
+      toast('Password changed');
     });
   };
 
@@ -142,7 +147,8 @@ export function Profile() {
               <form className="form-grid" onSubmit={onSubmit} noValidate>
                 <p className="banner info" role="note">
                   <Info aria-hidden="true" />
-                  Demo build: passwords are fixed sample data, so this form saves nothing.
+                  Changing it signs you in with the new password from now on. Demo build: until you
+                  change it, the shared demo password works.
                 </p>
                 <Field label="Current password">
                   <input

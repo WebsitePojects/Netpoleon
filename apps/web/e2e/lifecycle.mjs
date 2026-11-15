@@ -555,6 +555,58 @@ async function workflow(browser) {
     await page.locator('.batch[data-open="false"]').waitFor();
   });
 
+  await check('an invited user sets a password through a single-use link', async () => {
+    await page.goto(`${BASE}/users`);
+    await page.getByRole('button', { name: 'Add user' }).click();
+    await dialog(page).getByLabel('Username').fill('e2einvite');
+    await dialog(page).getByLabel('Full name').fill('E2E Invitee');
+    await dialog(page).getByLabel('Email').fill('e2e.invitee@netpoleon.example');
+    await dialog(page).getByRole('button', { name: 'Add user' }).click();
+    const link = await page.getByLabel('Invitation link').inputValue();
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.getByRole('button', { name: /Account menu/ }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await page.goto(link);
+    await page.getByPlaceholder('New password', { exact: true }).fill('quiet-harbour-ninety');
+    await page.getByPlaceholder('Repeat the new password').fill('quiet-harbour-ninety');
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await page.getByText('Your account is ready').waitFor();
+    await page.getByPlaceholder('Username').fill('e2einvite');
+    await page.getByPlaceholder('Password').fill('quiet-harbour-ninety');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.waitForURL(`${BASE}/`);
+    await page.goto(link);
+    await page.getByText('This link no longer works').waitFor();
+    await page.goto(`${BASE}/`);
+    await page.getByRole('button', { name: /Account menu/ }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await signInEmpty(page);
+  });
+
+  await check('selected units go to the label sheet with scannable codes', async () => {
+    await page.goto(`${BASE}/units`);
+    const boxes = page.locator('.table tbody td.td-select input');
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await page.locator('.batch').getByRole('button', { name: 'Print labels' }).click();
+    await page.waitForURL(/units\/labels\?codes=/);
+    await page.locator('.asset-label').nth(1).waitFor();
+    assert((await page.locator('.asset-label').count()) === 2, 'expected two labels');
+    assert((await page.locator('.asset-label .barcode rect').count()) > 40, 'barcode missing');
+  });
+
+  await check('a partner company is added and archived without losing history', async () => {
+    await page.goto(`${BASE}/partners`);
+    await page.getByRole('button', { name: 'Add company' }).click();
+    await dialog(page).getByLabel('Company name').fill('E2E Partner Co');
+    await dialog(page).getByRole('button', { name: 'Add company' }).click();
+    await page.getByRole('heading', { name: 'E2E Partner Co' }).waitFor();
+    await page.getByRole('button', { name: 'Archive' }).click();
+    await page.getByText('Archived', { exact: true }).first().waitFor();
+    await page.getByRole('button', { name: 'Restore' }).click();
+    await page.getByText('Active', { exact: true }).first().waitFor();
+  });
+
   await check('a batch action moves several units in one go', async () => {
     await page.goto(`${BASE}/units?status=in_stock&category=FW`);
     await page.locator('.table tbody tr').first().waitFor();
@@ -627,6 +679,10 @@ const TOUR = [
   ['settings', '/settings'],
   ['settings-labels', '/settings?section=labels'],
   ['profile', '/profile'],
+  ['partners', '/partners'],
+  ['partner-detail', '/partners/org-001'],
+  ['labels', '/units/labels?codes=NTP-FW-00001,NTP-SW-00002,NTP-SRV-00003'],
+  ['help', '/help'],
   ['not-found', '/nope'],
 ];
 

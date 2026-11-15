@@ -8,6 +8,13 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **Check a hand-written encoder against an independent decoder, not against your own table.**
+  Comparing the Code 128 bars with `python-barcode` showed differences, but only because that
+  library switches to the denser set C for digit runs. Decoding our bars with the library's
+  own pattern table proved every label reads back to its exact asset code with a valid
+  checksum. Comparing encodings alone would have "failed" a correct barcode.
+- **Prettier collapses a lookup table to one entry per line.** Put `// prettier-ignore` on
+  data tables (the 107 barcode patterns) so the file stays readable.
 - **React Router 7 applies `setSearchParams` inside a transition, so the URL changes before the
   new screen paints.** Two e2e checks read the old table: one waited for `?sort=-code` then read
   still-ascending rows, the other clicked a tab and then "Export CSV" on the previous tab's
