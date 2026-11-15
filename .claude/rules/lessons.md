@@ -12,7 +12,7 @@
   `dockerDesktopLinuxEngine` pipe and `wsl -l -v` lists nothing; Docker's data is on
   `E:\DockerData` and `E:` was not attached. Do not reinstall or reset it (other projects'
   containers live there). Run the tests against a throwaway cluster instead: `initdb` with the
-  binaries in `D:\PostgreSQLin` into a scratch folder, `pg_ctl … -o "-p 55432"`, then set
+  binaries in `D:\PostgreSQL\bin` into a scratch folder, `pg_ctl … -o "-p 55432"`, then set
   `WMS_TEST_PG_URL`. Never point it at the PostgreSQL service on 5432: it belongs to other
   projects and the tests create cluster-wide roles.
 - **`corepack pnpm test` runs the db and api suites at the same time, and roles are
