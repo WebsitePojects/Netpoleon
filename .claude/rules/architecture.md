@@ -56,6 +56,15 @@ Imports go down that table only. A package never imports from `apps/`.
   attaches `request.session`; routes use `requireSignedIn` / `requirePermission(action)` with
   the one permission table in `@wms/contracts`.
 - **Rate limits** are in-process (`platform/rate-limit.ts`): correct for one API instance.
+- **Modules so far:** `auth`, `catalog` (categories, models, locations in one `/catalog`
+  response), `assets` (keyset-paged list with server-side search, filters and sort; register,
+  edit, move, batch move, repair, retire), `users` (staff invites, edit, deactivate with the
+  one-active-admin guard taken under a row lock), `partners` (companies and contacts), `audit`
+  (read-only, keyset-paged). Every list states its query count in a test.
+- **Writing raw SQL inside a Drizzle select:** in a one-table select Drizzle renders a column
+  as a bare `"id"`. Inside a correlated subquery that binds to the subquery's own table, so
+  name the outer column literally (`partner_orgs.id`). See the partners and catalog
+  repositories.
 
 ## Inside the API: three layers, one direction
 `routes → services → repositories → Database`. A layer never reaches past the one below it.

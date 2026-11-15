@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { CLIENT_HEADER, SESSION_COOKIE } from '@wms/contracts';
 import { Database, schema } from '@wms/db';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { getTestDb } from '../../../packages/db/test/helpers.js';
 import { hashPassword } from '../src/platform/crypto.js';
@@ -96,3 +97,64 @@ export async function login(
   }
   return cookie;
 }
+
+const suffix = () => randomBytes(4).toString('hex').toUpperCase();
+
+/** A site, a room inside it and two shelves inside the room, with unique codes. */
+export async function createShelves(db: Database) {
+  return db.transaction({ kind: 'system' }, async (tx) => {
+    const tag = suffix();
+    const insert = async (values: typeof schema.locations.$inferInsert) => {
+      const [row] = await tx
+        .insert(schema.locations)
+        .values(values)
+        .returning({ id: schema.locations.id });
+      if (!row) throw new Error('location insert returned no row');
+      return row.id;
+    };
+    const site = await insert({ kind: 'site', code: `S-${tag}`, name: `Site ${tag}` });
+    const room = await insert({
+      kind: 'room',
+      code: `R-${tag}`,
+      name: `Room ${tag}`,
+      parentId: site,
+    });
+    const shelfA = await insert({
+      kind: 'shelf',
+      code: `A-${tag}`,
+      name: `Shelf A ${tag}`,
+      parentId: room,
+    });
+    const shelfB = await insert({
+      kind: 'shelf',
+      code: `B-${tag}`,
+      name: `Shelf B ${tag}`,
+      parentId: room,
+    });
+    return { site, room, shelfA, shelfB };
+  });
+}
+
+/** A product model in a seeded category (FW by default), with accessories. */
+export async function createModel(db: Database, categoryCode = 'FW') {
+  return db.transaction({ kind: 'system' }, async (tx) => {
+    const [category] = await tx
+      .select({ id: schema.categories.id })
+      .from(schema.categories)
+      .where(eq(schema.categories.code, categoryCode));
+    if (!category) throw new Error(`category ${categoryCode} is not seeded`);
+    const [model] = await tx
+      .insert(schema.productModels)
+      .values({ categoryId: category.id, brand: 'Fortinet', modelName: `FG-${suffix()}` })
+      .returning({ id: schema.productModels.id });
+    if (!model) throw new Error('model insert returned no row');
+    await tx.insert(schema.modelAccessories).values([
+      { productModelId: model.id, name: 'Power adapter' },
+      { productModelId: model.id, name: 'Console cable' },
+    ]);
+    return { categoryId: category.id, modelId: model.id };
+  });
+}
+
+/** A fresh idempotency key: one per user intent. */
+export const intent = () => ({ 'idempotency-key': `intent-${randomBytes(8).toString('hex')}` });

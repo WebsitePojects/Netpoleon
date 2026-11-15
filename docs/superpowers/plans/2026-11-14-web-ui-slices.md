@@ -88,7 +88,7 @@ Delivered in four pushes, each green in CI before it reaches `main`.
   archive), label sheet with QR code and Code 128 barcode, help centre
 - [x] **2b, API platform and auth:** audit writer, idempotency keys, outbox and worker,
   permission table, login, sessions, logout, invitation, password reset, rate limits
-- [ ] **2c, API stock and people:** users, partner companies, categories, locations, assets
+- [x] **2c, API stock and people:** users, partner companies, categories, locations, assets
   (register, edit, move, repair, retire), development seed
 - [ ] **2d, wiring:** the web app uses the API when `VITE_API_URL` is set; demo mode stays the
   default

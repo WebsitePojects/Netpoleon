@@ -36,3 +36,5 @@ export {
   type TokenOwner,
   type TokenPurpose,
 } from './auth.js';
+export * from './stock.js';
+export * from './people.js';

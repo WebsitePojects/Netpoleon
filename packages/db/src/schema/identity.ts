@@ -25,6 +25,18 @@ export const users = pgTable('users', {
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lockedUntil: timestamptz('locked_until'),
   lastLoginAt: timestamptz('last_login_at'),
+  jobTitle: text('job_title'),
+});
+
+export const partnerContacts = pgTable('partner_contacts', {
+  id: primaryId(),
+  ...timestamps(),
+  partnerOrgId: uuid('partner_org_id')
+    .notNull()
+    .references(() => partnerOrgs.id),
+  fullName: text('full_name').notNull(),
+  email: citext('email').notNull(),
+  phone: text('phone').notNull().default(''),
 });
 
 export const sessions = pgTable('sessions', {

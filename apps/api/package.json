@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "worker": "tsx --conditions=wms-source src/worker.ts",
     "create-admin": "tsx --conditions=wms-source src/cli/create-admin.ts",
+    "dev-seed": "tsx --conditions=wms-source src/cli/dev-seed.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },

@@ -20,6 +20,8 @@ pnpm is not on PATH here: run it as `corepack pnpm …`.
   drops its own database there. Or push to a `feat/*` branch; CI runs the gate with Docker
 - `corepack pnpm --filter @wms/api worker` — the outbox and cleanup worker (dev)
 - `corepack pnpm --filter @wms/api create-admin --email … --name "…"` — invite the first admin
+- `WMS_DEV_PASSWORD=… corepack pnpm --filter @wms/api dev-seed` — demo accounts, warehouse,
+  catalogue, units and partners in a development database (refuses in production)
 - `graphify . --update` — refresh the code map in `graphify-out/` after structural changes
 
 ## Project memory (auto-loaded)

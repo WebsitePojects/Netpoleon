@@ -8,6 +8,18 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **Drizzle drops the table name from columns in a one-table select, which silently breaks a
+  correlated subquery.** `sql\`(SELECT … FROM model_accessories WHERE product_model_id =
+  ${productModels.id})\`` rendered `= "id"`, which bound to `model_accessories.id`: every model
+  showed no accessories, and the partners list would have counted each company's contacts and
+  loans wrong. Render the query with `.toSQL()` when in doubt; in subqueries name the outer
+  column literally (`product_models.id`). A test that puts data on one company and checks a
+  second one stays empty is what catches it.
+- **`= ANY(${array})` in a Drizzle `sql` template becomes `= ANY(($1, $2))`, a row, not an
+  array.** Use `inArray(column, values)`.
+- **Tests and development data must not share a PostgreSQL cluster.** Roles are cluster-wide,
+  so every test run resets their passwords and the dev database's credentials stop working.
+  The dev database lives on its own throwaway cluster (port 55433 here).
 - **Docker here cannot start when WSL has no distributions.** `docker version` fails on the
   `dockerDesktopLinuxEngine` pipe and `wsl -l -v` lists nothing; Docker's data is on
   `E:\DockerData` and `E:` was not attached. Do not reinstall or reset it (other projects'

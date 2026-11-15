@@ -5,7 +5,11 @@ import fp from 'fastify-plugin';
 import { AppError } from '../errors.js';
 import type { RequestContext } from '../platform/audit.js';
 import { readCookie } from '../platform/cookies.js';
-import { hashRequestBody, type IdempotencyRequest } from '../platform/mutations.js';
+import {
+  hashRequestBody,
+  type IdempotencyRequest,
+  type MutationOutcome,
+} from '../platform/mutations.js';
 
 /** A signed-in person for the length of one request. */
 export interface ActiveSession {
@@ -93,4 +97,10 @@ export function idempotencyOf(request: FastifyRequest): IdempotencyRequest {
     route: `${request.method} ${request.routeOptions.url ?? request.url}`,
     requestHash: hashRequestBody({ params: request.params, body: request.body }),
   };
+}
+
+/** Sends a mutation's result, marking a replay so the client can tell. */
+export function sendOutcome(reply: FastifyReply, outcome: MutationOutcome) {
+  if (outcome.replayed) reply.header('idempotent-replayed', 'true');
+  return reply.status(outcome.status).send(outcome.body);
 }
