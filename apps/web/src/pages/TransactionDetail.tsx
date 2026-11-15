@@ -113,7 +113,7 @@ export function TransactionDetail() {
   const approver = loan.decidedBy ? userByName.get(loan.decidedBy) : undefined;
   const late = daysOverdue(loan, today);
   const missing = missingAccessories(loan);
-  const ownRequest = loan.filedBy === user.username;
+  const ownRequest = loan.filedBy === user.id;
   const close = () => setOpen(null);
   const steps = buildSteps(loan, nameOf);
 
@@ -390,7 +390,7 @@ export function TransactionDetail() {
           danger
           onClose={close}
           onConfirm={(reason) => {
-            store.rejectRequest(user.username, loan.number, reason);
+            store.rejectRequest(user.id, loan.number, reason);
             toast(`${loan.number} rejected`);
           }}
         />
@@ -405,7 +405,7 @@ export function TransactionDetail() {
           danger
           onClose={close}
           onConfirm={(reason) => {
-            store.cancelRequest(user.username, loan.number, reason);
+            store.cancelRequest(user.id, loan.number, reason);
             toast(`${loan.number} cancelled`);
           }}
         />
@@ -441,7 +441,7 @@ function ApproveDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       canConfirm={unitCode !== ''}
       onClose={onClose}
       onConfirm={() => {
-        store.approveRequest(user.username, loan.number, unitCode);
+        store.approveRequest(user.id, loan.number, unitCode);
         toast(`${loan.number} approved, ${unitCode} reserved`);
       }}
     >
@@ -484,7 +484,7 @@ function ReleaseDialog({ loan, unit, onClose }: { loan: Loan; unit: Unit; onClos
       confirmLabel="Confirm release"
       onClose={onClose}
       onConfirm={() => {
-        store.releaseLoan(user.username, loan.number, scanned, accessories);
+        store.releaseLoan(user.id, loan.number, scanned, accessories);
         toast(`${unit.code} released to ${loan.borrower.company}`);
       }}
     >
@@ -515,7 +515,7 @@ function ReceiveDialog({ loan, unit, onClose }: { loan: Loan; unit: Unit; onClos
       confirmLabel="Confirm return"
       onClose={onClose}
       onConfirm={() => {
-        store.receiveReturn(user.username, loan.number, scanned, back, note);
+        store.receiveReturn(user.id, loan.number, scanned, back, note);
         toast(
           missing.length > 0
             ? `${unit.code} returned, accessory missing`
@@ -564,7 +564,7 @@ function ExtendDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       confirmLabel="Extend loan"
       onClose={onClose}
       onConfirm={() => {
-        store.extendLoan(user.username, loan.number, dueDate);
+        store.extendLoan(user.id, loan.number, dueDate);
         toast(`Return date moved to ${formatDate(dueDate)}`);
       }}
     >

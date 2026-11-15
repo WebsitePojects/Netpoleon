@@ -1,5 +1,5 @@
 import { addDays, daysBetween, toDateKey } from '../lib/dates.js';
-import { passwordProblem } from '../lib/passwords.js';
+import { passwordProblem } from '@wms/contracts/client';
 import { randomToken, sha256Hex } from '../lib/sha256.js';
 import { can, type Action } from './permissions.js';
 import {
@@ -56,8 +56,9 @@ const TRANSITIONS: Record<MovementType, { from: UnitStatus[]; to: UnitStatus }> 
   inspection_started: { from: ['returned'], to: 'under_inspection' },
   restocked: { from: ['under_inspection'], to: 'in_stock' },
   sent_to_repair: { from: ['under_inspection', 'in_stock'], to: 'for_repair' },
-  repaired: { from: ['for_repair'], to: 'in_stock' },
-  retired: { from: ['in_stock', 'for_repair'], to: 'retired' },
+  // As in the database: a repaired unit is inspected again before it can be lent.
+  repaired: { from: ['for_repair'], to: 'under_inspection' },
+  retired: { from: ['in_stock', 'under_inspection', 'for_repair'], to: 'retired' },
 };
 
 export interface RegisterUnitInput {
@@ -202,25 +203,27 @@ export class WmsStore {
     return this.unit(unit.code);
   }
 
+  /** Changes the given details; a field left out keeps its value. */
   updateUnit(
     actor: string,
     code: string,
-    patch: Pick<Unit, 'brand' | 'model' | 'serial' | 'accessories' | 'notes'>,
+    patch: Partial<Pick<Unit, 'serial' | 'condition' | 'notes'>>,
   ): void {
     const draft = this.draftFor(actor, 'unit.edit');
     const unit = this.unitIn(draft, code);
-    const serial = normaliseCode(required(patch.serial, 'Serial number'));
+    const serial =
+      patch.serial === undefined
+        ? unit.serial
+        : normaliseCode(required(patch.serial, 'Serial number'));
     const duplicate = draft.units.find((other) => other.serial === serial && other.code !== code);
     if (duplicate) {
       throw new WmsError(`Serial number ${serial} already belongs to ${duplicate.code}.`);
     }
     this.replaceUnit(draft, {
       ...unit,
-      brand: required(patch.brand, 'Brand'),
-      model: required(patch.model, 'Model'),
       serial,
-      accessories: patch.accessories.map((item) => item.trim()).filter(Boolean),
-      notes: patch.notes.trim(),
+      condition: patch.condition ?? unit.condition,
+      notes: patch.notes === undefined ? unit.notes : patch.notes.trim(),
     });
     this.audit(draft, actor, 'unit.edited', code, 'Details updated');
     this.commit(draft);
@@ -250,11 +253,13 @@ export class WmsStore {
     this.commit(draft);
   }
 
-  completeRepair(actor: string, code: string, locationId: string, note: string): void {
+  /** The repaired unit goes to the QA area; inspection decides where it goes next. */
+  completeRepair(actor: string, code: string, note: string): void {
     const draft = this.draftFor(actor, 'unit.repair');
-    const location = this.shelfIn(draft, locationId);
-    const detail = note.trim() || `Repaired and restocked on ${location.name}`;
-    this.moveInDraft(draft, code, 'repaired', actor, null, detail, { locationId });
+    const detail = note.trim() || 'Repaired; back to inspection';
+    this.moveInDraft(draft, code, 'repaired', actor, null, detail, {
+      locationId: LOCATION_IDS.qa,
+    });
     this.audit(draft, actor, 'unit.repaired', code, detail);
     this.commit(draft);
   }

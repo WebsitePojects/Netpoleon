@@ -24,6 +24,8 @@ export interface SubmitGuard {
   clearError: () => void;
   /** Runs `action` unless one is already running. Resolves true when it succeeded. */
   run: (action: () => void) => Promise<boolean>;
+  /** The same guard for an asynchronous backend call. */
+  runAsync: (action: () => Promise<unknown>) => Promise<boolean>;
 }
 
 /**
@@ -35,14 +37,13 @@ export function useSubmit(): SubmitGuard {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const run = useCallback(async (action: () => void): Promise<boolean> => {
+  const guarded = useCallback(async (action: () => Promise<unknown>): Promise<boolean> => {
     if (inFlight.current) return false;
     inFlight.current = true;
     setPending(true);
     setError(null);
     try {
-      await delay(SIMULATED_LATENCY_MS);
-      action();
+      await action();
       return true;
     } catch (caught) {
       if (caught instanceof WmsError) {
@@ -59,8 +60,20 @@ export function useSubmit(): SubmitGuard {
     }
   }, []);
 
+  // A synchronous demo-store action waits a moment first, so its pending state is seen.
+  const run = useCallback(
+    (action: () => void) =>
+      guarded(async () => {
+        await delay(SIMULATED_LATENCY_MS);
+        action();
+      }),
+    [guarded],
+  );
+  // A backend call takes real time already.
+  const runAsync = useCallback((action: () => Promise<unknown>) => guarded(action), [guarded]);
+
   const clearError = useCallback(() => setError(null), []);
-  return { pending, error, clearError, run };
+  return { pending, error, clearError, run, runAsync };
 }
 
 /** False for a short moment after mount, so a screen can show its skeleton first. */

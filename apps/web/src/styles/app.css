@@ -1162,6 +1162,10 @@ tr.is-late td:first-child {
 .table tbody {
   animation: fade 220ms var(--ease-ui) both;
 }
+.table[data-refreshing='true'] tbody {
+  opacity: 0.55;
+  transition: opacity 160ms var(--ease-ui);
+}
 .table tbody tr.is-selected {
   background: color-mix(in srgb, var(--accent) 9%, transparent);
 }
@@ -3515,6 +3519,19 @@ tr.is-late td:first-child,
 }
 .route-bar {
   background: var(--brand);
+}
+
+/* A screen not connected to the server yet, while the API is on. */
+.slice-notice {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  max-width: 640px;
+}
+.slice-notice > svg {
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
 }
 
 /* ── Label sheet ────────────────────────────────────────────────────────── */

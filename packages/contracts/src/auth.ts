@@ -2,9 +2,7 @@ import { z } from 'zod';
 import { MAX_PASSWORD_LENGTH } from './passwords.js';
 import { PARTNER_ROLES, STAFF_ROLES } from './permissions.js';
 
-/** Sent on every mutating request; a cross-site form cannot set it without a CORS preflight. */
-export const CLIENT_HEADER = 'x-wms-client';
-export const SESSION_COOKIE = 'wms_session';
+export { CLIENT_HEADER, SESSION_COOKIE } from './constants.js';
 
 const email = z
   .email()

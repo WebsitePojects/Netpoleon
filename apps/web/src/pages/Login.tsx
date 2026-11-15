@@ -3,7 +3,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth.js';
 import { Brand, Button, FormError } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
+import { useBackend } from '../backend/context.js';
+import { useWmsState } from '../data/context.js';
 import { formatDateTime } from '../lib/dates.js';
 import { useSubmit } from '../lib/hooks.js';
 
@@ -32,7 +33,9 @@ export function LoginFoot() {
 }
 
 export function Login() {
-  const { user, signIn } = useAuth();
+  const { user, ready, signIn } = useAuth();
+  const backend = useBackend();
+  const demo = backend.mode === 'demo';
   const navigate = useNavigate();
   const location = useLocation();
   const submit = useSubmit();
@@ -40,21 +43,20 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
 
   const routeState = location.state as { from?: string; notice?: string } | null;
   const from = routeState?.from ?? '/';
   const notice = routeState?.notice ?? null;
+  if (!ready) return null;
   if (user && !submit.pending) return <Navigate to={from} replace />;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    setFailure(null);
-    void submit.run(() => {
-      const error = signIn(username, password, remember);
-      if (error) setFailure(error);
-      else void navigate(from, { replace: true });
-    });
+    void submit
+      .runAsync(() => signIn(username, password, remember))
+      .then((done) => {
+        if (done) void navigate(from, { replace: true });
+      });
   };
 
   return (
@@ -73,12 +75,13 @@ export function Login() {
             </p>
           )}
           <label className="input-wrap">
-            <span className="sr-only">Username</span>
-            <User aria-hidden="true" />
+            <span className="sr-only">{demo ? 'Username' : 'Email address'}</span>
+            {demo ? <User aria-hidden="true" /> : <Mail aria-hidden="true" />}
             <input
               className="input"
               name="username"
-              placeholder="Username"
+              type={demo ? 'text' : 'email'}
+              placeholder={demo ? 'Username' : 'Email address'}
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
@@ -121,14 +124,16 @@ export function Login() {
               Forgot password?
             </Link>
           </div>
-          <FormError message={failure ?? submit.error} />
+          <FormError message={submit.error} />
           <Button type="submit" variant="primary" block pending={submit.pending}>
             {submit.pending ? 'Signing in…' : 'Sign In'}
           </Button>
-          <p className="demo-note">
-            <strong>Demo build</strong>
-            Leave both fields empty and press Sign In to enter as the demo administrator.
-          </p>
+          {demo && (
+            <p className="demo-note">
+              <strong>Demo build</strong>
+              Leave both fields empty and press Sign In to enter as the demo administrator.
+            </p>
+          )}
           <LoginFoot />
         </form>
       </div>
@@ -137,7 +142,7 @@ export function Login() {
 }
 
 export function ForgotPassword() {
-  const store = useStore();
+  const backend = useBackend();
   const { mailbox } = useWmsState();
   const submit = useSubmit();
   const [email, setEmail] = useState('');
@@ -145,8 +150,8 @@ export function ForgotPassword() {
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    void submit.run(() => {
-      store.requestPasswordReset(email);
+    void submit.runAsync(async () => {
+      await backend.forgotPassword(email);
       setSent(true);
     });
   };
@@ -193,7 +198,7 @@ export function ForgotPassword() {
               </Button>
             </>
           )}
-          {sent && <DemoMailbox mails={mailbox.slice(0, 3)} />}
+          {sent && backend.mode === 'demo' && <DemoMailbox mails={mailbox.slice(0, 3)} />}
           <Link to="/login" className="link row" style={{ justifyContent: 'center', gap: 6 }}>
             <ArrowLeft aria-hidden="true" width={15} height={15} />
             Back to sign in

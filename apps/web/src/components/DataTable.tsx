@@ -1,4 +1,13 @@
-import { ChevronDown, ChevronUp, Download, Search, X, type LucideIcon } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Download,
+  Search,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/auth.js';
@@ -49,6 +58,22 @@ export interface TableExport<T> {
   name: string;
   header: string[];
   row: (row: T) => CsvCell[];
+  /** Remote tables only hold one page; this fetches every matching row for the export. */
+  all?: () => Promise<T[]>;
+}
+
+/**
+ * Server-side mode: `rows` is the page the server returned for the current search, filters
+ * and sort (which the table keeps in the address, where the page reads them). The table does
+ * no filtering, sorting or slicing of its own, and pages forward and back by cursor.
+ */
+export interface RemotePaging {
+  total: number;
+  page: number;
+  hasNext: boolean;
+  onPage: (page: number) => void;
+  /** True while a newer page is loading; the current rows stay on screen, dimmed. */
+  refreshing?: boolean;
 }
 
 interface TableState {
@@ -159,6 +184,7 @@ export function DataTable<T>({
   rowClass,
   rowLabel,
   empty,
+  remote,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -178,6 +204,7 @@ export function DataTable<T>({
   rowLabel?: (row: T) => string;
   /** Shown when the table has no rows at all, before any search or filter. */
   empty?: { title: string; body?: ReactNode; icon?: LucideIcon };
+  remote?: RemotePaging;
 }) {
   const { can } = useAuth();
   const [state, change] = useTableState(
@@ -185,6 +212,8 @@ export function DataTable<T>({
     filters.map((filter) => filter.id),
   );
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  // Remote rows come and go with the page, so the chosen rows themselves are kept.
+  const [picked, setPicked] = useState<ReadonlyMap<string, T>>(new Map());
 
   const mayExport = exportCsv !== undefined && can('reports.export');
   const selectable = mayExport || batchActions.length > 0;
@@ -194,6 +223,7 @@ export function DataTable<T>({
   const narrowed = state.q.trim() !== '' || Object.values(state.filters).some(Boolean);
 
   const matching = useMemo(() => {
+    if (remote) return rows;
     const terms = state.q.toLowerCase().split(/\s+/).filter(Boolean);
     const active = filters.filter((filter) => state.filters[filter.id]);
     let result = rows.filter((row) => {
@@ -220,16 +250,21 @@ export function DataTable<T>({
     // The filter and search callbacks are rebuilt by the page on every render; the values
     // they read are covered by `rows` and the table state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, state.q, JSON.stringify(state.filters), sortColumn?.id, descending]);
+  }, [rows, state.q, JSON.stringify(state.filters), sortColumn?.id, descending, remote]);
 
   const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
-  const page = Math.min(state.page, pageCount);
-  const visible = matching.slice((page - 1) * pageSize, page * pageSize);
+  const page = remote ? remote.page : Math.min(state.page, pageCount);
+  const visible = remote ? rows : matching.slice((page - 1) * pageSize, page * pageSize);
 
   // Rows can leave the list under a selection (a batch action, a filter); count what is left.
-  const chosen = matching.filter((row) => selected.has(rowKey(row)));
+  const chosen = remote
+    ? [...picked.values()]
+    : matching.filter((row) => selected.has(rowKey(row)));
   const visibleChosen = visible.filter((row) => selected.has(rowKey(row))).length;
-  const clear = () => setSelected(new Set());
+  const clear = () => {
+    setSelected(new Set());
+    setPicked(new Map());
+  };
 
   const toggle = (keys: string[], on: boolean) => {
     const next = new Set(selected);
@@ -238,12 +273,36 @@ export function DataTable<T>({
       else next.delete(key);
     }
     setSelected(next);
+    if (remote) {
+      const byKey = new Map(rows.map((row) => [rowKey(row), row]));
+      const nextPicked = new Map(picked);
+      for (const key of keys) {
+        const row = byKey.get(key);
+        if (on && row) nextPicked.set(key, row);
+        else nextPicked.delete(key);
+      }
+      setPicked(nextPicked);
+    }
   };
 
   const cycleSort = (id: string) => {
     // First press ascending, second descending, third back to the original order.
     const next = sortId !== id ? id : descending ? '' : `-${id}`;
     change({ sort: next });
+  };
+
+  const [exporting, setExporting] = useState(false);
+  const exportMatching = async () => {
+    if (!remote || !exportCsv?.all) {
+      download(matching);
+      return;
+    }
+    setExporting(true);
+    try {
+      download(await exportCsv.all());
+    } finally {
+      setExporting(false);
+    }
   };
 
   const download = (list: T[]) => {
@@ -316,7 +375,8 @@ export function DataTable<T>({
             <Button
               icon={Download}
               disabled={matching.length === 0}
-              onClick={() => download(matching)}
+              pending={exporting}
+              onClick={() => void exportMatching()}
             >
               Export CSV
             </Button>
@@ -331,7 +391,7 @@ export function DataTable<T>({
               <span className="batch-count num" aria-live="polite">
                 <b>{chosen.length}</b> selected
               </span>
-              {chosen.length < matching.length && (
+              {!remote && chosen.length < matching.length && (
                 <button
                   type="button"
                   className="link"
@@ -380,7 +440,7 @@ export function DataTable<T>({
           ]}
           rows={Math.min(pageSize, 8)}
         />
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && !remote?.refreshing ? (
         narrowed || !empty ? (
           <Empty title={`No ${noun} match`}>
             Change the search or{' '}
@@ -401,7 +461,11 @@ export function DataTable<T>({
           </Empty>
         )
       ) : (
-        <table className={selectable ? 'table has-select' : 'table'}>
+        <table
+          className={selectable ? 'table has-select' : 'table'}
+          data-refreshing={remote?.refreshing ? 'true' : undefined}
+          aria-busy={remote?.refreshing ?? false}
+        >
           <thead>
             <tr>
               {selectable && (
@@ -503,13 +567,63 @@ export function DataTable<T>({
         </table>
       )}
 
-      <TableFoot
-        page={page}
-        pageSize={pageSize}
-        total={matching.length}
-        noun={noun}
-        onPage={(next) => change({ page: next === 1 ? '' : String(next) })}
-      />
+      {remote ? (
+        <RemoteFoot remote={remote} shown={visible.length} pageSize={pageSize} noun={noun} />
+      ) : (
+        <TableFoot
+          page={page}
+          pageSize={pageSize}
+          total={matching.length}
+          noun={noun}
+          onPage={(next) => change({ page: next === 1 ? '' : String(next) })}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Footer for server-side paging: the count, and back and forward by cursor. */
+function RemoteFoot({
+  remote,
+  shown,
+  pageSize,
+  noun,
+}: {
+  remote: RemotePaging;
+  shown: number;
+  pageSize: number;
+  noun: string;
+}) {
+  const first = shown === 0 ? 0 : (remote.page - 1) * pageSize + 1;
+  const last = (remote.page - 1) * pageSize + shown;
+  return (
+    <div className="table-foot">
+      <span className="num">
+        Showing {first} to {last} of {remote.total} {noun}
+      </span>
+      {(remote.page > 1 || remote.hasNext) && (
+        <nav className="pager" aria-label="Pages">
+          <button
+            type="button"
+            disabled={remote.page === 1 || remote.refreshing}
+            onClick={() => remote.onPage(remote.page - 1)}
+            aria-label="Previous page"
+          >
+            <ChevronLeft aria-hidden="true" />
+          </button>
+          <button type="button" className="num" aria-current="page">
+            {remote.page}
+          </button>
+          <button
+            type="button"
+            disabled={!remote.hasNext || remote.refreshing}
+            onClick={() => remote.onPage(remote.page + 1)}
+            aria-label="Next page"
+          >
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </nav>
+      )}
     </div>
   );
 }

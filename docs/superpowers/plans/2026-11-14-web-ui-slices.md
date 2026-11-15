@@ -90,7 +90,7 @@ Delivered in four pushes, each green in CI before it reaches `main`.
   permission table, login, sessions, logout, invitation, password reset, rate limits
 - [x] **2c, API stock and people:** users, partner companies, categories, locations, assets
   (register, edit, move, repair, retire), development seed
-- [ ] **2d, wiring:** the web app uses the API when `VITE_API_URL` is set; demo mode stays the
+- [x] **2d, wiring:** the web app uses the API when `VITE_API_URL` is set; demo mode stays the
   default
 
 ## Demo accounts (demo data only, no real system behind them)

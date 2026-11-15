@@ -30,8 +30,9 @@ import {
 } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { useBackend, useResource } from '../backend/context.js';
 import { useWmsState } from '../data/context.js';
-import { ROLE_LABELS } from '../data/permissions.js';
+import { ROLE_LABELS, roleLabel } from '../data/permissions.js';
 import { buildAlerts } from '../data/selectors.js';
 import type { WmsState } from '../data/types.js';
 import { useDismiss, useIsDark, useTheme, type ThemeChoice } from '../lib/hooks.js';
@@ -76,14 +77,19 @@ function isActive(pathname: string, item: NavItem): boolean {
 export function Shell() {
   const location = useLocation();
   const state = useWmsState();
+  const backend = useBackend();
+  // Loans and alerts come from the API in slice 3; until then only the demo has them.
+  const demo = backend.mode === 'demo';
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const unreadAlerts = useMemo(
-    () => buildAlerts(state, new Date()).filter((alert) => !alert.read).length,
-    [state],
+    () => (demo ? buildAlerts(state, new Date()).filter((alert) => !alert.read).length : 0),
+    [state, demo],
   );
-  const pendingRequests = state.loans.filter((loan) => loan.status === 'pending').length;
-  const awaitingInspection = state.units.filter((unit) => unit.status === 'returned').length;
+  const pendingRequests = demo ? state.loans.filter((loan) => loan.status === 'pending').length : 0;
+  const awaitingInspection = demo
+    ? state.units.filter((unit) => unit.status === 'returned').length
+    : 0;
   const badges: Record<string, number> = {
     '/borrow': pendingRequests,
     '/inspection': awaitingInspection,
@@ -293,11 +299,31 @@ function searchAll(state: WmsState, query: string): SearchHit[] {
 
 function GlobalSearch({ state }: { state: WmsState }) {
   const navigate = useNavigate();
+  const backend = useBackend();
   const box = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const hits = useMemo(() => searchAll(state, query), [state, query]);
+  const term = query.trim();
+  // With the API the server searches the units; the demo searches its own data in memory.
+  const remote = useResource(`units:search:${backend.mode === 'api' ? term : ''}`, () =>
+    backend.mode === 'api' && term.length >= 2
+      ? backend.units({ q: term, sort: 'code', limit: MAX_HITS })
+      : Promise.resolve({ items: [], total: 0, nextCursor: null }),
+  );
+  const hits = useMemo<SearchHit[]>(
+    () =>
+      backend.mode === 'demo'
+        ? searchAll(state, query)
+        : (remote.data?.items ?? []).map((unit) => ({
+            key: unit.assetCode,
+            to: `/units/${unit.assetCode}`,
+            title: unit.assetCode,
+            detail: `${unit.model.brand} ${unit.model.modelName} · ${unit.serialNumber}`,
+            chip: <StatusChip status={unit.status} />,
+          })),
+    [backend.mode, state, query, remote.data],
+  );
   const close = useCallback(() => setOpen(false), []);
   useDismiss(box, open, close);
 
@@ -382,9 +408,10 @@ function PersonMenu() {
   const close = useCallback(() => setOpen(false), []);
   useDismiss(box, open, close);
 
-  const others = users.filter(
-    (item) => item.active && !item.invited && item.username !== user.username,
-  );
+  // Demo only: the other accounts this browser can switch to without signing in.
+  const others = switchTo
+    ? users.filter((item) => item.active && !item.invited && item.username !== user.id)
+    : [];
 
   return (
     <div className="person" ref={box}>
@@ -394,12 +421,12 @@ function PersonMenu() {
         onClick={() => setOpen((current) => !current)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account menu for ${user.name}`}
+        aria-label={`Account menu for ${user.fullName}`}
       >
-        <Avatar name={user.name} />
+        <Avatar name={user.fullName} />
         <span className="person-text">
-          <strong>{user.name}</strong>
-          <span>{ROLE_LABELS[user.role]}</span>
+          <strong>{user.fullName}</strong>
+          <span>{roleLabel(user.role)}</span>
         </span>
         <ChevronDown aria-hidden="true" className="only-desktop" />
       </button>
@@ -446,34 +473,38 @@ function PersonMenu() {
             ))}
           </div>
           <div className="menu-sep" />
-          <p className="menu-label">Demo: switch account</p>
-          {others.map((item) => (
-            <button
-              key={item.username}
-              type="button"
-              role="menuitem"
-              className="menu-item"
-              onClick={() => {
-                setOpen(false);
-                switchTo(item.username);
-              }}
-            >
-              <Avatar name={item.name} />
-              <span>
-                {item.name}
-                <span className="cell-sub" style={{ display: 'block' }}>
-                  {ROLE_LABELS[item.role]}
-                </span>
-              </span>
-            </button>
-          ))}
-          <div className="menu-sep" />
+          {others.length > 0 && (
+            <>
+              <p className="menu-label">Demo: switch account</p>
+              {others.map((item) => (
+                <button
+                  key={item.username}
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    setOpen(false);
+                    switchTo?.(item.username);
+                  }}
+                >
+                  <Avatar name={item.name} />
+                  <span>
+                    {item.name}
+                    <span className="cell-sub" style={{ display: 'block' }}>
+                      {ROLE_LABELS[item.role]}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              <div className="menu-sep" />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
             className="menu-item danger"
             onClick={() => {
-              signOut();
+              void signOut();
               void navigate('/login', { replace: true });
             }}
           >

@@ -1,23 +1,30 @@
+import type { AuditEntry, StaffRole, User } from '@wms/contracts';
 import { Check, Copy, Mail, Pencil, UserCheck, UserPlus, UserX } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
+import {
+  invalidate,
+  useBackend,
+  useCursorPaging,
+  useIntent,
+  useResource,
+} from '../backend/context.js';
 import { Select, SkPage } from '../components/controls.js';
-import { usePageReady } from '../lib/hooks.js';
-import { DataTable, runBatch, type Column } from '../components/DataTable.js';
+import { DataTable, type Column } from '../components/DataTable.js';
 import { ActionDialog } from '../components/dialogs.js';
 import {
   Avatar,
   Button,
   Dialog,
   Field,
+  FormError,
   PageHead,
   Switch,
   Tabs,
   useToast,
   type TabItem,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
 import {
   ACTION_LABELS,
   can,
@@ -26,7 +33,7 @@ import {
   type Action,
 } from '../data/permissions.js';
 import { WmsError } from '../data/store.js';
-import type { AuditEntry, Role, User } from '../data/types.js';
+import { describeEntry } from '../lib/audit.js';
 import { formatDateTime, formatRelative } from '../lib/dates.js';
 
 type TabId = 'users' | 'roles' | 'activity';
@@ -37,21 +44,40 @@ const TABS: TabItem<TabId>[] = [
   { id: 'activity', label: 'Activity log' },
 ];
 
-const ROLES: Role[] = ['admin', 'manager', 'warehouse', 'auditor'];
-const PAGE_SIZE = 15;
+const ROLES: StaffRole[] = ['admin', 'manager', 'warehouse', 'auditor'];
+const LOG_PAGE_SIZE = 15;
+
+const STATUS_TONES: Record<User['status'], string> = {
+  active: 'in_stock',
+  invited: 'for_repair',
+  deactivated: 'retired',
+};
+const STATUS_TEXT: Record<User['status'], string> = {
+  active: 'Active',
+  invited: 'Invited',
+  deactivated: 'Deactivated',
+};
 
 function isTabId(value: string | null): value is TabId {
   return TABS.some((tab) => tab.id === value);
 }
 
+/** The link to hand over, when the backend returned one (the demo has no mail server). */
+interface InviteNotice {
+  name: string;
+  email: string;
+  link: string | null;
+}
+
 export function Users() {
-  const ready = usePageReady();
+  const backend = useBackend();
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'users';
   const { can: allowed } = useAuth();
   const [editing, setEditing] = useState<User | 'new' | null>(null);
-  const [invite, setInvite] = useState<{ name: string; token: string } | null>(null);
+  const [invite, setInvite] = useState<InviteNotice | null>(null);
+  const people = useResource('users', () => backend.users());
 
   return (
     <div className="page">
@@ -67,77 +93,96 @@ export function Users() {
           )
         }
       />
-      {!ready ? (
-        <SkPage kind="table" />
-      ) : (
-        <div className="stack">
-          <Tabs
-            tabs={TABS}
-            value={tab}
-            onChange={(next) => setParams({ tab: next }, { replace: true })}
-            label="Users"
-          />
-          {tab === 'users' && (
-            <UserTable
-              onEdit={setEditing}
-              onInvited={(name, token) => setInvite({ name, token })}
-            />
-          )}
-          {tab === 'roles' && <RoleMatrix />}
-          {tab === 'activity' && <ActivityLog />}
-        </div>
-      )}
+      <div className="stack">
+        <Tabs
+          tabs={TABS}
+          value={tab}
+          onChange={(next) => setParams({ tab: next }, { replace: true })}
+          label="Users"
+        />
+        {tab === 'users' &&
+          (people.loading ? (
+            <SkPage kind="table" />
+          ) : people.error ? (
+            <FormError message={people.error} />
+          ) : (
+            <UserTable users={people.data ?? []} onEdit={setEditing} onInvited={setInvite} />
+          ))}
+        {tab === 'roles' && <RoleMatrix />}
+        {tab === 'activity' && <ActivityLog people={people.data ?? []} />}
+      </div>
       {editing && (
         <UserDialog
           user={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
-          onInvited={(name, token) => setInvite({ name, token })}
+          onInvited={setInvite}
         />
       )}
-      {invite && (
-        <InviteLinkDialog name={invite.name} token={invite.token} onClose={() => setInvite(null)} />
-      )}
+      {invite && <InviteDialog notice={invite} onClose={() => setInvite(null)} />}
     </div>
   );
 }
 
 function UserTable({
+  users,
   onEdit,
   onInvited,
 }: {
+  users: User[];
   onEdit: (user: User) => void;
-  onInvited: (name: string, token: string) => void;
+  onInvited: (notice: InviteNotice) => void;
 }) {
-  const { users } = useWmsState();
-  const store = useStore();
+  const backend = useBackend();
   const me = useCurrentUser();
   const { can: allowed } = useAuth();
   const toast = useToast();
+  const intent = useIntent();
   const now = new Date();
   const manage = allowed('users.manage');
 
-  const toggle = (user: User, active: boolean) => {
+  const toggle = async (user: User, active: boolean) => {
     try {
-      store.setUserActive(me.username, user.username, active);
-      toast(`${user.name} ${active ? 'reactivated' : 'deactivated'}`);
+      await backend.setUserActive(intent.key, user.id, active);
+      intent.renew();
+      invalidate('users');
+      toast(`${user.fullName} ${active ? 'reactivated' : 'deactivated'}`);
     } catch (error) {
       if (!(error instanceof WmsError)) throw error;
       toast(error.message, 'error');
     }
   };
 
-  /** Sets the selected accounts on or off, skipping those already there. */
-  const setActive = (picked: User[], active: boolean, clear: () => void) => {
-    const result = runBatch(
-      picked.filter((user) => user.active !== active),
-      (user) => store.setUserActive(me.username, user.username, active),
-    );
+  /** Sets the selected accounts on or off, one request each, skipping those already there. */
+  const setActive = async (picked: User[], active: boolean, clear: () => void) => {
+    let done = 0;
+    let refused = '';
+    for (const user of picked.filter((item) => (item.status === 'active') !== active)) {
+      try {
+        // One intent per person: each is its own change, safe to repeat on its own.
+        await backend.setUserActive(`${intent.key}-${user.id}`, user.id, active);
+        done += 1;
+      } catch (error) {
+        if (!(error instanceof WmsError)) throw error;
+        refused ||= error.message;
+      }
+    }
+    intent.renew();
     clear();
-    if (result.refused) toast(result.refused, 'error');
-    if (result.done > 0)
-      toast(
-        `${result.done} user${result.done === 1 ? '' : 's'} ${active ? 'reactivated' : 'deactivated'}`,
-      );
+    invalidate('users');
+    if (refused) toast(refused, 'error');
+    if (done > 0)
+      toast(`${done} user${done === 1 ? '' : 's'} ${active ? 'reactivated' : 'deactivated'}`);
+  };
+
+  const resend = async (user: User) => {
+    try {
+      const result = await backend.resendInvite(intent.key, user.id);
+      intent.renew();
+      onInvited({ name: user.fullName, email: user.email, link: result.link });
+    } catch (error) {
+      if (!(error instanceof WmsError)) throw error;
+      toast(error.message, 'error');
+    }
   };
 
   const columns: Column<User>[] = [
@@ -146,26 +191,26 @@ function UserTable({
       header: 'User',
       width: '1.6fr',
       skeleton: 'thumb',
-      sort: (user) => user.name,
+      sort: (user) => user.fullName,
       cell: (user) => (
         <span className="unit-cell">
-          <Avatar name={user.name} />
+          <Avatar name={user.fullName} />
           <span>
-            <span className="cell-main">{user.name}</span>
+            <span className="cell-main">{user.fullName}</span>
             <span className="cell-sub" style={{ display: 'block' }}>
-              {user.title || user.email}
+              {user.jobTitle ?? ''}
             </span>
           </span>
         </span>
       ),
     },
     {
-      id: 'username',
-      header: 'Username',
-      className: 'mono',
-      skeleton: 90,
-      sort: (user) => user.username,
-      cell: (user) => user.username,
+      id: 'email',
+      header: 'Email',
+      width: '1.4fr',
+      skeleton: 140,
+      sort: (user) => user.email,
+      cell: (user) => user.email,
     },
     {
       id: 'role',
@@ -179,26 +224,26 @@ function UserTable({
       header: 'Last active',
       skeleton: 90,
       // Newest first reads naturally, so the value sorts by time, not by the label.
-      sort: (user) => user.lastActiveAt ?? '',
-      cell: (user) => (user.lastActiveAt ? formatRelative(user.lastActiveAt, now) : 'Never'),
+      sort: (user) => user.lastLoginAt ?? '',
+      cell: (user) => (user.lastLoginAt ? formatRelative(user.lastLoginAt, now) : 'Never'),
     },
     {
       id: 'active',
       header: 'Active',
-      width: '0.7fr',
+      width: '0.8fr',
       skeleton: 40,
-      sort: (user) => (user.active ? 0 : 1),
+      sort: (user) => user.status,
       cell: (user) =>
-        user.invited ? (
-          <span className="chip" data-tone="for_repair">
+        user.status === 'invited' ? (
+          <span className="chip" data-tone={STATUS_TONES.invited}>
             Invited
           </span>
         ) : (
           <Switch
-            checked={user.active}
-            disabled={!manage}
-            label={`${user.name} can sign in`}
-            onChange={(next) => toggle(user, next)}
+            checked={user.status === 'active'}
+            disabled={!manage || user.id === me.id}
+            label={`${user.fullName} can sign in`}
+            onChange={(next) => void toggle(user, next)}
           />
         ),
     },
@@ -209,23 +254,12 @@ function UserTable({
             header: 'Edit',
             label: '',
             align: 'right' as const,
-            width: '0.7fr',
+            width: '1fr',
             skeleton: 60,
             cell: (user: User) => (
               <span className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
-                {user.invited && (
-                  <Button
-                    size="sm"
-                    icon={Mail}
-                    onClick={() => {
-                      try {
-                        onInvited(user.name, store.resendInvite(me.username, user.username));
-                      } catch (error) {
-                        if (!(error instanceof WmsError)) throw error;
-                        toast(error.message, 'error');
-                      }
-                    }}
-                  >
+                {user.status === 'invited' && (
+                  <Button size="sm" icon={Mail} onClick={() => void resend(user)}>
                     Resend invite
                   </Button>
                 )}
@@ -244,13 +278,13 @@ function UserTable({
       <DataTable
         rows={users}
         columns={columns}
-        rowKey={(user) => user.username}
-        rowLabel={(user) => user.name}
+        rowKey={(user) => user.id}
+        rowLabel={(user) => user.fullName}
         noun="users"
         syncUrl
         search={{
-          placeholder: 'Search by name, username, or email…',
-          text: (user) => `${user.name} ${user.username} ${user.email} ${user.title}`,
+          placeholder: 'Search by name, email, or job title…',
+          text: (user) => `${user.fullName} ${user.email} ${user.jobTitle ?? ''}`,
         }}
         filters={[
           {
@@ -263,12 +297,12 @@ function UserTable({
           {
             id: 'access',
             label: 'Access',
-            allLabel: 'Active and inactive',
-            options: [
-              { value: 'active', label: 'Active only' },
-              { value: 'inactive', label: 'Inactive only' },
-            ],
-            test: (user, value) => user.active === (value === 'active'),
+            allLabel: 'Every status',
+            options: (Object.keys(STATUS_TEXT) as User['status'][]).map((status) => ({
+              value: status,
+              label: `${STATUS_TEXT[status]} only`,
+            })),
+            test: (user, value) => user.status === value,
           },
         ]}
         batchActions={
@@ -277,28 +311,27 @@ function UserTable({
                 {
                   label: 'Reactivate',
                   icon: UserCheck,
-                  run: (picked, clear) => setActive(picked, true, clear),
+                  run: (picked, clear) => void setActive(picked, true, clear),
                 },
                 {
                   label: 'Deactivate',
                   icon: UserX,
                   danger: true,
-                  run: (picked, clear) => setActive(picked, false, clear),
+                  run: (picked, clear) => void setActive(picked, false, clear),
                 },
               ]
             : []
         }
         exportCsv={{
           name: 'users',
-          header: ['Name', 'Username', 'Email', 'Job title', 'Role', 'Active', 'Last active'],
+          header: ['Name', 'Email', 'Job title', 'Role', 'Status', 'Last active'],
           row: (user) => [
-            user.name,
-            user.username,
+            user.fullName,
             user.email,
-            user.title,
+            user.jobTitle ?? '',
             ROLE_LABELS[user.role],
-            user.active ? 'Yes' : 'No',
-            user.lastActiveAt ?? '',
+            STATUS_TEXT[user.status],
+            user.lastLoginAt ?? '',
           ],
         }}
       />
@@ -349,10 +382,26 @@ function RoleMatrix() {
   );
 }
 
-function ActivityLog() {
-  const { audit, users } = useWmsState();
-  const nameOf = useMemo(() => new Map(users.map((user) => [user.username, user.name])), [users]);
-  const rows = useMemo(() => [...audit].reverse(), [audit]);
+/** The activity log, newest first, paged by the server. It cannot be edited by anyone. */
+function ActivityLog({ people }: { people: User[] }) {
+  const backend = useBackend();
+  const [params, setParams] = useSearchParams();
+  const actorId = params.get('who') ?? undefined;
+  const action = params.get('kind') ?? undefined;
+  const filterKey = JSON.stringify({ actorId, action });
+  const paging = useCursorPaging(
+    filterKey,
+    Math.max(1, Number(params.get('page')) || 1),
+    (next) => {
+      const updated = new URLSearchParams(params);
+      if (next <= 1) updated.delete('page');
+      else updated.set('page', String(next));
+      setParams(updated, { replace: true });
+    },
+  );
+  const log = useResource(`audit:${filterKey}:${paging.cursor ?? ''}`, () =>
+    backend.audit({ actorId, action, cursor: paging.cursor, limit: LOG_PAGE_SIZE }),
+  );
 
   const columns: Column<AuditEntry>[] = [
     {
@@ -360,22 +409,14 @@ function ActivityLog() {
       header: 'When',
       className: 'num',
       skeleton: 120,
-      sort: (entry) => entry.at,
-      cell: (entry) => formatDateTime(entry.at),
+      cell: (entry) => formatDateTime(entry.occurredAt),
     },
-    {
-      id: 'who',
-      header: 'Who',
-      skeleton: 110,
-      sort: (entry) => nameOf.get(entry.actor) ?? entry.actor,
-      cell: (entry) => nameOf.get(entry.actor) ?? entry.actor,
-    },
+    { id: 'who', header: 'Who', skeleton: 110, cell: (entry) => entry.actorName ?? 'System' },
     {
       id: 'action',
       header: 'Action',
       className: 'mono',
       skeleton: 120,
-      sort: (entry) => entry.action,
       cell: (entry) => entry.action,
     },
     {
@@ -383,61 +424,67 @@ function ActivityLog() {
       header: 'Record',
       className: 'mono',
       skeleton: 110,
-      sort: (entry) => entry.target,
-      cell: (entry) => entry.target,
+      cell: (entry) => describeEntry(entry).record,
     },
     {
       id: 'detail',
       header: 'Detail',
       width: '1.6fr',
       skeleton: 180,
-      cell: (entry) => entry.detail || '—',
+      cell: (entry) => describeEntry(entry).detail || '—',
     },
   ];
 
   return (
     <div className="card table-card">
       <DataTable
-        rows={rows}
+        rows={log.data?.items ?? []}
         columns={columns}
-        rowKey={(entry) => String(entry.id)}
+        rowKey={(entry) => entry.id}
         noun="entries"
-        pageSize={PAGE_SIZE}
+        loading={log.loading}
+        pageSize={LOG_PAGE_SIZE}
         syncUrl
-        search={{
-          placeholder: 'Search by person, action, or asset code…',
-          text: (entry) =>
-            `${entry.actor} ${nameOf.get(entry.actor) ?? ''} ${entry.action} ${entry.target} ${entry.detail}`,
+        remote={{
+          // The log is append-only and can be long; the server does not count it, so the
+          // footer counts what has been paged through.
+          total: (paging.page - 1) * LOG_PAGE_SIZE + (log.data?.items.length ?? 0),
+          page: paging.page,
+          hasNext: Boolean(log.data?.nextCursor),
+          onPage: (next) => paging.goTo(next, log.data?.nextCursor),
+          refreshing: log.refreshing,
         }}
         filters={[
           {
             id: 'who',
             label: 'Person',
             allLabel: 'Everyone',
-            options: users.map((user) => ({ value: user.username, label: user.name })),
-            test: (entry, value) => entry.actor === value,
+            options: people.map((person) => ({ value: person.id, label: person.fullName })),
+            test: () => true,
           },
           {
             id: 'kind',
             label: 'Record type',
             allLabel: 'All records',
-            options: [...new Set(audit.map((entry) => entry.action.split('.')[0] ?? ''))]
-              .filter(Boolean)
-              .sort()
-              .map((kind) => ({ value: kind, label: kind[0]?.toUpperCase() + kind.slice(1) })),
-            test: (entry, value) => entry.action.startsWith(`${value}.`),
+            options: [
+              { value: 'asset', label: 'Units' },
+              { value: 'unit', label: 'Units (demo)' },
+              { value: 'loan', label: 'Loans' },
+              { value: 'user', label: 'People' },
+              { value: 'partner', label: 'Partner companies' },
+              { value: 'auth', label: 'Sign-ins' },
+              { value: 'settings', label: 'Settings' },
+            ],
+            test: () => true,
           },
         ]}
         exportCsv={{
           name: 'activity-log',
           header: ['When', 'Who', 'Action', 'Record', 'Detail'],
-          row: (entry) => [
-            entry.at,
-            nameOf.get(entry.actor) ?? entry.actor,
-            entry.action,
-            entry.target,
-            entry.detail,
-          ],
+          row: (entry) => {
+            const { record, detail } = describeEntry(entry);
+            return [entry.occurredAt, entry.actorName ?? 'System', entry.action, record, detail];
+          },
         }}
       />
     </div>
@@ -451,54 +498,54 @@ function UserDialog({
 }: {
   user: User | null;
   onClose: () => void;
-  onInvited: (name: string, token: string) => void;
+  onInvited: (notice: InviteNotice) => void;
 }) {
-  const store = useStore();
-  const me = useCurrentUser();
+  const backend = useBackend();
   const toast = useToast();
-  const [username, setUsername] = useState(user?.username ?? '');
-  const [name, setName] = useState(user?.name ?? '');
+  const intent = useIntent();
+  const [name, setName] = useState(user?.fullName ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
-  const [title, setTitle] = useState(user?.title ?? '');
-  const [role, setRole] = useState<Role>(user?.role ?? 'warehouse');
+  const [title, setTitle] = useState(user?.jobTitle ?? '');
+  const [role, setRole] = useState<StaffRole>(user?.role ?? 'warehouse');
 
   return (
     <ActionDialog
-      title={user ? `Edit ${user.name}` : 'Add a user'}
+      title={user ? `Edit ${user.fullName}` : 'Add a user'}
       description={
         user
           ? undefined
           : 'They get a link to set their own password. The link works once, for 72 hours.'
       }
-      confirmLabel={user ? 'Save changes' : 'Add user'}
+      confirmLabel={user ? 'Save changes' : 'Send invitation'}
       width={560}
       onClose={onClose}
-      onConfirm={() => {
+      onConfirmAsync={async () => {
         if (user) {
-          store.updateUser(me.username, user.username, { name, email, title, role });
-          toast(`${name} updated`);
+          await backend.editUser(intent.key, user.id, {
+            fullName: name,
+            email,
+            jobTitle: title.trim() || null,
+            role,
+          });
+          toast(`${name.trim()} updated`);
         } else {
-          const token = store.addUser(me.username, { username, name, email, title, role });
-          toast(`${name.trim()} invited`);
-          onInvited(name.trim(), token);
+          const result = await backend.inviteUser(intent.key, {
+            email,
+            fullName: name,
+            role,
+            jobTitle: title.trim() || null,
+            phone: null,
+          });
+          onInvited({ name: result.user.fullName, email: result.user.email, link: result.link });
         }
+        invalidate('users');
       }}
     >
       <div className="form-grid cols-2">
-        <Field label="Username" hint={user ? 'A username cannot be changed.' : undefined}>
-          <input
-            className="input mono"
-            value={username}
-            disabled={user !== null}
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setUsername(event.target.value)}
-          />
-        </Field>
         <Field label="Full name">
           <input className="input" value={name} onChange={(event) => setName(event.target.value)} />
         </Field>
-        <Field label="Email">
+        <Field label="Email" hint="They sign in with this address.">
           <input
             className="input"
             type="email"
@@ -513,10 +560,10 @@ function UserDialog({
             onChange={(event) => setTitle(event.target.value)}
           />
         </Field>
-        <Field label="Role" hint={ROLE_SUMMARIES[role]} className="span-2">
+        <Field label="Role" hint={ROLE_SUMMARIES[role]}>
           <Select
             value={role}
-            onChange={(value) => setRole(value as Role)}
+            onChange={(value) => setRole(value as StaffRole)}
             options={ROLES.map((item) => ({ value: item, label: ROLE_LABELS[item] }))}
           />
         </Field>
@@ -526,21 +573,14 @@ function UserDialog({
 }
 
 /**
- * Shows the invitation link once. With the API connected, the link is emailed instead; the
- * demo has no mail server, so the administrator hands it over.
+ * Confirms an invitation. With the API the link is emailed and never shown here; the demo has
+ * no mail server, so it shows the link once for the administrator to hand over.
  */
-function InviteLinkDialog({
-  name,
-  token,
-  onClose,
-}: {
-  name: string;
-  token: string;
-  onClose: () => void;
-}) {
+function InviteDialog({ notice, onClose }: { notice: InviteNotice; onClose: () => void }) {
   const toast = useToast();
-  const link = `${window.location.origin}/accept-invite/${token}`;
+  const link = notice.link ? `${window.location.origin}${notice.link}` : null;
   const copy = () => {
+    if (!link) return;
     void navigator.clipboard
       .writeText(link)
       .then(() => toast('Invitation link copied'))
@@ -548,31 +588,46 @@ function InviteLinkDialog({
   };
   return (
     <Dialog
-      title={`Invitation for ${name}`}
-      description="Send this link to them. It works once and expires in 72 hours."
+      title={`Invitation for ${notice.name}`}
+      description={
+        link
+          ? 'Send this link to them. It works once and expires in 72 hours.'
+          : `An email with a sign-up link is on its way to ${notice.email}. It works once and expires in 72 hours.`
+      }
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose}>Done</Button>
-          <Button variant="primary" icon={Copy} onClick={copy}>
-            Copy link
-          </Button>
+          {link && (
+            <Button variant="primary" icon={Copy} onClick={copy}>
+              Copy link
+            </Button>
+          )}
         </>
       }
     >
-      <div className="invite-link">
-        <input
-          className="input mono"
-          readOnly
-          value={link}
-          aria-label="Invitation link"
-          onFocus={(event) => event.target.select()}
-        />
-      </div>
-      <p className="muted" style={{ marginTop: 10 }}>
-        Demo build: no email is sent, so copy the link. It also appears in the demo mailbox on the
-        Forgot password screen.
-      </p>
+      {link ? (
+        <>
+          <div className="invite-link">
+            <input
+              className="input mono"
+              readOnly
+              value={link}
+              aria-label="Invitation link"
+              onFocus={(event) => event.target.select()}
+            />
+          </div>
+          <p className="muted" style={{ marginTop: 10 }}>
+            Demo build: no email is sent, so copy the link. It also appears in the demo mailbox on
+            the Forgot password screen.
+          </p>
+        </>
+      ) : (
+        <p className="banner info">
+          <Mail aria-hidden="true" />
+          The person appears as Invited until they set their password.
+        </p>
+      )}
     </Dialog>
   );
 }

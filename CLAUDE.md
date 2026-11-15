@@ -22,6 +22,11 @@ pnpm is not on PATH here: run it as `corepack pnpm …`.
 - `corepack pnpm --filter @wms/api create-admin --email … --name "…"` — invite the first admin
 - `WMS_DEV_PASSWORD=… corepack pnpm --filter @wms/api dev-seed` — demo accounts, warehouse,
   catalogue, units and partners in a development database (refuses in production)
+- Web app on the API: run the API (`corepack pnpm --filter @wms/api dev`), then
+  `VITE_BACKEND=api corepack pnpm --filter @wms/web dev`; `/api` is proxied to port 3000.
+  Without `VITE_BACKEND=api` the web app runs the in-browser demo
+- `apps/web/e2e/lifecycle.mjs` (demo) and `apps/web/e2e/api-mode.mjs` (connected; reads
+  `WMS_E2E_EMAIL` / `WMS_E2E_PASSWORD`) — browser end-to-end runs through Playwright
 - `graphify . --update` — refresh the code map in `graphify-out/` after structural changes
 
 ## Project memory (auto-loaded)

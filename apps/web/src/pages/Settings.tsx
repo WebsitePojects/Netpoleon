@@ -14,14 +14,16 @@ import {
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { Location, LocationKind } from '@wms/contracts';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { invalidate, useBackend, useIntent, useResource } from '../backend/context.js';
 import { Select, SkPage } from '../components/controls.js';
 import { DataTable } from '../components/DataTable.js';
 import { ActionDialog } from '../components/dialogs.js';
 import { QrCode } from '../components/QrCode.js';
 import { Button, Field, FormError, PageHead, Switch, useToast } from '../components/ui.js';
 import { useStore, useWmsState } from '../data/context.js';
-import type { Category, Settings as SettingsData, StorageLocation } from '../data/types.js';
+import type { Settings as SettingsData } from '../data/types.js';
 import { usePageReady, useSubmit } from '../lib/hooks.js';
 
 type SectionId =
@@ -178,7 +180,7 @@ function useSettingsDraft() {
   };
   const save = () => {
     void submit.run(() => {
-      store.updateSettings(user.username, draft);
+      store.updateSettings(user.id, draft);
       toast('Settings saved');
     });
   };
@@ -331,20 +333,15 @@ function GeneralSection({ editable }: { editable: boolean }) {
 }
 
 function CategoriesSection({ editable }: { editable: boolean }) {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
-  const toast = useToast();
+  const backend = useBackend();
+  const catalog = useResource('catalog', () => backend.catalog());
   const [adding, setAdding] = useState(false);
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const unitsIn = (category: Category) =>
-    state.units.filter((unit) => unit.categoryCode === category.code).length;
 
   return (
     <>
       <DataTable
-        rows={state.categories}
+        rows={catalog.data?.categories ?? []}
+        loading={catalog.loading}
         columns={[
           {
             id: 'name',
@@ -371,11 +368,11 @@ function CategoriesSection({ editable }: { editable: boolean }) {
             header: 'Units',
             align: 'right',
             className: 'num',
-            sort: unitsIn,
-            cell: unitsIn,
+            sort: (category) => category.unitCount,
+            cell: (category) => category.unitCount,
           },
         ]}
-        rowKey={(category) => category.code}
+        rowKey={(category) => category.id}
         noun="categories"
         search={{
           placeholder: 'Search by name or code…',
@@ -390,58 +387,66 @@ function CategoriesSection({ editable }: { editable: boolean }) {
           </Button>
         </div>
       )}
-      {adding && (
-        <ActionDialog
-          title="Add a category"
-          confirmLabel="Add category"
-          onClose={() => setAdding(false)}
-          onConfirm={() => {
-            store.addCategory(user.username, code, name);
-            toast(`Category ${name.trim()} added`);
-            setCode('');
-            setName('');
-          }}
-        >
-          <Field label="Name">
-            <input
-              className="input"
-              value={name}
-              placeholder="UPS"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </Field>
-          <Field label="Code" hint="2 to 4 letters, used inside asset codes.">
-            <input
-              className="input mono"
-              value={code}
-              placeholder="UPS"
-              maxLength={4}
-              onChange={(event) => setCode(event.target.value.toUpperCase())}
-            />
-          </Field>
-        </ActionDialog>
-      )}
+      {adding && <CategoryDialog onClose={() => setAdding(false)} />}
     </>
   );
 }
 
-function LocationsSection({ editable }: { editable: boolean }) {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
+function CategoryDialog({ onClose }: { onClose: () => void }) {
+  const backend = useBackend();
   const toast = useToast();
-  const [adding, setAdding] = useState(false);
+  const intent = useIntent();
+  const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [zone, setZone] = useState('');
-  const KIND_LABELS = { shelf: 'Shelf', area: 'Work area', site: 'Outside' } as const;
-  const unitsAt = (location: StorageLocation) =>
-    state.units.filter((unit) => unit.locationId === location.id && unit.status !== 'retired')
-      .length;
+  return (
+    <ActionDialog
+      title="Add a category"
+      confirmLabel="Add category"
+      onClose={onClose}
+      onConfirmAsync={async () => {
+        await backend.addCategory(intent.key, { name, code });
+        invalidate('catalog');
+        toast(`Category ${name.trim()} added`);
+      }}
+    >
+      <Field label="Name">
+        <input
+          className="input"
+          value={name}
+          placeholder="UPS"
+          onChange={(event) => setName(event.target.value)}
+        />
+      </Field>
+      <Field label="Code" hint="2 to 4 letters, used inside asset codes.">
+        <input
+          className="input mono"
+          value={code}
+          placeholder="UPS"
+          maxLength={4}
+          onChange={(event) => setCode(event.target.value.toUpperCase())}
+        />
+      </Field>
+    </ActionDialog>
+  );
+}
+
+const KIND_LABELS: Record<LocationKind, string> = {
+  site: 'Site',
+  room: 'Room or work area',
+  shelf: 'Shelf',
+};
+
+function LocationsSection({ editable }: { editable: boolean }) {
+  const backend = useBackend();
+  const catalog = useResource('catalog', () => backend.catalog());
+  const [adding, setAdding] = useState(false);
+  const rooms = (catalog.data?.locations ?? []).filter((item) => item.kind === 'room');
 
   return (
     <>
       <DataTable
-        rows={state.locations}
+        rows={catalog.data?.locations ?? []}
+        loading={catalog.loading}
         columns={[
           {
             id: 'name',
@@ -452,9 +457,9 @@ function LocationsSection({ editable }: { editable: boolean }) {
           },
           {
             id: 'zone',
-            header: 'Zone',
-            sort: (location) => location.zone,
-            cell: (location) => location.zone,
+            header: 'Inside',
+            sort: (location) => location.parentName ?? '',
+            cell: (location) => location.parentName ?? '—',
           },
           {
             id: 'kind',
@@ -467,22 +472,22 @@ function LocationsSection({ editable }: { editable: boolean }) {
             header: 'Units here',
             align: 'right',
             className: 'num',
-            sort: unitsAt,
-            cell: unitsAt,
+            sort: (location) => location.unitCount,
+            cell: (location) => location.unitCount,
           },
         ]}
         rowKey={(location) => location.id}
         noun="locations"
         search={{
-          placeholder: 'Search by name or zone…',
-          text: (location) => `${location.name} ${location.zone}`,
+          placeholder: 'Search by name or where it is…',
+          text: (location) => `${location.name} ${location.parentName ?? ''} ${location.code}`,
         }}
         filters={[
           {
             id: 'kind',
             label: 'Type',
             allLabel: 'All types',
-            options: (Object.keys(KIND_LABELS) as StorageLocation['kind'][]).map((kind) => ({
+            options: (Object.keys(KIND_LABELS) as LocationKind[]).map((kind) => ({
               value: kind,
               label: KIND_LABELS[kind],
             })),
@@ -492,43 +497,60 @@ function LocationsSection({ editable }: { editable: boolean }) {
       />
       {editable && (
         <div className="save-bar">
-          <span>Work areas and the client site are built in.</span>
-          <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>
+          <span>Shelves sit inside a room; units are stocked on shelves.</span>
+          <Button size="sm" icon={Plus} onClick={() => setAdding(true)} disabled={!rooms.length}>
             Add shelf
           </Button>
         </div>
       )}
-      {adding && (
-        <ActionDialog
-          title="Add a shelf"
-          confirmLabel="Add shelf"
-          onClose={() => setAdding(false)}
-          onConfirm={() => {
-            store.addLocation(user.username, name, zone);
-            toast(`${name.trim()} added`);
-            setName('');
-            setZone('');
-          }}
-        >
-          <Field label="Name">
-            <input
-              className="input"
-              value={name}
-              placeholder="Shelf H-01"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </Field>
-          <Field label="Zone">
-            <input
-              className="input"
-              value={zone}
-              placeholder="UPS aisle"
-              onChange={(event) => setZone(event.target.value)}
-            />
-          </Field>
-        </ActionDialog>
-      )}
+      {adding && <ShelfDialogNew rooms={rooms} onClose={() => setAdding(false)} />}
     </>
+  );
+}
+
+function ShelfDialogNew({ rooms, onClose }: { rooms: Location[]; onClose: () => void }) {
+  const backend = useBackend();
+  const toast = useToast();
+  const intent = useIntent();
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [parentId, setParentId] = useState(rooms[0]?.id ?? '');
+  return (
+    <ActionDialog
+      title="Add a shelf"
+      confirmLabel="Add shelf"
+      onClose={onClose}
+      onConfirmAsync={async () => {
+        await backend.addShelf(intent.key, { name, code: code || name, parentId });
+        invalidate('catalog');
+        toast(`${name.trim()} added`);
+      }}
+    >
+      <Field label="Name">
+        <input
+          className="input"
+          value={name}
+          placeholder="Shelf H-01"
+          onChange={(event) => setName(event.target.value)}
+        />
+      </Field>
+      <Field label="Code" hint="What the shelf label says, such as H-01.">
+        <input
+          className="input mono"
+          value={code}
+          placeholder="H-01"
+          maxLength={24}
+          onChange={(event) => setCode(event.target.value.toUpperCase())}
+        />
+      </Field>
+      <Field label="Room">
+        <Select
+          value={parentId}
+          onChange={setParentId}
+          options={rooms.map((room) => ({ value: room.id, label: room.name }))}
+        />
+      </Field>
+    </ActionDialog>
   );
 }
 

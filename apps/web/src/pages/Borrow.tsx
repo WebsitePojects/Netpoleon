@@ -286,7 +286,7 @@ export function Borrow() {
           onClose={() => setRejecting(null)}
           onConfirm={(reason) => {
             const result = runBatch(rejecting.loans, (loan) =>
-              store.rejectRequest(user.username, loan.number, reason),
+              store.rejectRequest(user.id, loan.number, reason),
             );
             if (result.done === 0) throw new WmsError(result.refused);
             const skipped = rejecting.loans.length - result.done;
@@ -365,7 +365,7 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
         if (!filed.current) onClose();
       }}
       onConfirm={() => {
-        const loan = store.createRequest(user.username, {
+        const loan = store.createRequest(user.id, {
           brand: chosen?.brand ?? '',
           model: chosen?.model ?? '',
           borrower: { name, company, email, phone },

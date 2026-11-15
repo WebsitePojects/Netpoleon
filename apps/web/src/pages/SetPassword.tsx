@@ -1,9 +1,10 @@
 import { ArrowLeft, CircleCheck, Eye, EyeOff, KeyRound, Lock } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, FormError } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { passwordProblem } from '../lib/passwords.js';
+import { useBackend, useResource } from '../backend/context.js';
+import { useWmsState } from '../data/context.js';
+import { MIN_PASSWORD_LENGTH, passwordProblem } from '@wms/contracts/client';
 import { useSubmit } from '../lib/hooks.js';
 import { LoginArt, LoginFoot } from './Login.js';
 
@@ -27,8 +28,10 @@ const COPY: Record<Purpose, { title: string; lead: string; button: string; done:
 /** One screen for both single-use links: accepting an invitation and resetting a password. */
 function SetPassword({ purpose }: { purpose: Purpose }) {
   const { token = '' } = useParams();
-  const store = useStore();
+  const backend = useBackend();
   const { settings } = useWmsState();
+  // The demo lets an administrator change the minimum; the API applies the spec's 12.
+  const minLength = backend.mode === 'demo' ? settings.passwordMinLength : MIN_PASSWORD_LENGTH;
   const navigate = useNavigate();
   const submit = useSubmit();
   const [password, setPassword] = useState('');
@@ -37,10 +40,11 @@ function SetPassword({ purpose }: { purpose: Purpose }) {
   const [touched, setTouched] = useState(false);
   const copy = COPY[purpose];
 
-  // Read once: once the link is spent the same render must not flip to "expired" under the
+  // Read once per link: once it is spent, this screen must not flip to "expired" under the
   // person's feet while the success navigation runs.
-  const owner = useMemo(() => store.inspectToken(token, purpose), [store, token, purpose]);
-  const problem = passwordProblem(password, settings.passwordMinLength);
+  const link = useResource(`link:${purpose}:${token}`, () => backend.linkOwner(purpose, token));
+  const owner = link.data;
+  const problem = passwordProblem(password, minLength);
   const mismatch = confirm.length > 0 && confirm !== password;
 
   const onSubmit = (event: FormEvent) => {
@@ -48,9 +52,7 @@ function SetPassword({ purpose }: { purpose: Purpose }) {
     setTouched(true);
     if (problem || confirm !== password) return;
     void submit
-      .run(() => {
-        store.completeToken(token, purpose, password);
-      })
+      .runAsync(() => backend.completeLink(purpose, token, password))
       .then((done) => {
         if (done) void navigate('/login', { replace: true, state: { notice: copy.done } });
       });
@@ -60,7 +62,11 @@ function SetPassword({ purpose }: { purpose: Purpose }) {
     <div className="login">
       <div className="login-card">
         <LoginArt />
-        {owner ? (
+        {link.loading ? (
+          <div className="login-form" role="status" aria-label="Checking the link">
+            <span className="spinner" aria-hidden="true" />
+          </div>
+        ) : owner ? (
           <form className="login-form" onSubmit={onSubmit} noValidate>
             <header>
               <h2>{copy.title}</h2>
@@ -69,8 +75,7 @@ function SetPassword({ purpose }: { purpose: Purpose }) {
             <p className="banner info">
               <KeyRound aria-hidden="true" />
               <span>
-                Signing in as <strong>{owner.name}</strong>, username{' '}
-                <span className="mono">{owner.username}</span>
+                For <strong>{owner.fullName}</strong> · <span className="mono">{owner.email}</span>
               </span>
             </p>
             <label className="input-wrap">
@@ -112,7 +117,7 @@ function SetPassword({ purpose }: { purpose: Purpose }) {
             <ul className="pw-rules" id="password-rule">
               <li data-ok={password.length >= settings.passwordMinLength}>
                 <CircleCheck aria-hidden="true" />
-                At least {settings.passwordMinLength} characters
+                At least {minLength} characters
               </li>
               <li data-ok={password.length > 0 && problem === null}>
                 <CircleCheck aria-hidden="true" />

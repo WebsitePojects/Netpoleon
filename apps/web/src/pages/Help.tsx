@@ -126,7 +126,7 @@ const GUIDES: Guide[] = [
       'Open Inspection. Start inspection moves the unit to the QA area; tick several to start them together.',
       'Record result: tick the checklist, set the condition grade and choose the outcome.',
       'Restock puts the unit back on a shelf. Reassign sends it to another shelf or team. Send to repair records the fault.',
-      'When a repair is done, press Repair complete and choose the shelf it returns to.',
+      'When a repair is done, press Repair complete. The unit goes back to inspection, which decides the shelf it returns to.',
     ],
     link: { to: '/inspection', label: 'Go to Inspection' },
   },

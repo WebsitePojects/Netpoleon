@@ -116,7 +116,11 @@ export class AssetsRepository {
 
   private filters(query: AssetListQuery): SQL | undefined {
     const conditions: (SQL | undefined)[] = [
-      query.status ? eq(assets.status, query.status) : ne(assets.status, 'retired'),
+      query.codes
+        ? inArray(assets.assetCode, query.codes)
+        : query.status
+          ? eq(assets.status, query.status)
+          : ne(assets.status, 'retired'),
       query.categoryId ? eq(categories.id, query.categoryId) : undefined,
       query.locationId ? eq(assets.currentLocationId, query.locationId) : undefined,
     ];
@@ -210,12 +214,15 @@ export class AssetsRepository {
         toLocation: toLocation.name,
         actorName: users.fullName,
         note: assetMovements.note,
+        loanNumber: schema.loans.loanNo,
         occurredAt: assetMovements.occurredAt,
       })
       .from(assetMovements)
       .innerJoin(users, eq(users.id, assetMovements.actorUserId))
       .leftJoin(fromLocation, eq(fromLocation.id, assetMovements.fromLocationId))
       .leftJoin(toLocation, eq(toLocation.id, assetMovements.toLocationId))
+      .leftJoin(schema.loanItems, eq(schema.loanItems.id, assetMovements.loanItemId))
+      .leftJoin(schema.loans, eq(schema.loans.id, schema.loanItems.loanId))
       .where(eq(assetMovements.assetId, assetId))
       .orderBy(desc(assetMovements.occurredAt), desc(assetMovements.id))
       .limit(limit);

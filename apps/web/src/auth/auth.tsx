@@ -1,25 +1,33 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useStore, useWmsState } from '../data/context.js';
+import { isStaffRole } from '@wms/contracts/client';
+import type { SessionUser } from '@wms/contracts';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useBackend } from '../backend/context.js';
+import { DemoBackend } from '../backend/demo.js';
+import { onUnauthorized } from '../backend/http.js';
+import { useStore } from '../data/context.js';
 import { can, type Action } from '../data/permissions.js';
-import { DEMO_ADMIN_USERNAME, DEMO_PASSWORD } from '../data/seed.js';
-import type { User } from '../data/types.js';
 
 /**
- * DEMO SIGN-IN. There is no server in slice 1, so nothing here is security: credentials are
- * checked against fixtures in the browser, and an empty form enters as the demo administrator
- * (project owner's instruction, 2026-11-14). The whole file is replaced by the API session
- * in slice 2; no screen imports anything from it except `useAuth`.
+ * The signed-in person, from whichever backend runs. With the API the session is an HttpOnly
+ * cookie the page never sees; with the demo it is a name in browser storage.
  */
-
-const SESSION_KEY = 'wms-demo-session';
-
 interface AuthValue {
-  user: User | null;
-  /** Returns an error message, or null when signed in. */
-  signIn: (username: string, password: string, remember: boolean) => string | null;
-  signOut: () => void;
-  /** Demo convenience: change account without the sign-in screen, to try each role. */
-  switchTo: (username: string) => void;
+  user: SessionUser | null;
+  /** False until the first session check has answered, so nothing flashes the sign-in page. */
+  ready: boolean;
+  /** Throws a WmsError with a message for the person when sign-in is refused. */
+  signIn: (login: string, password: string, remember: boolean) => Promise<void>;
+  signOut: () => Promise<void>;
+  /** Demo only: change account without the sign-in screen, to try each role. */
+  switchTo: ((username: string) => void) | null;
   can: (action: Action) => boolean;
 }
 
@@ -32,80 +40,68 @@ const AuthContext = createContext<AuthValue | null>(null);
 let signedOutOnPurpose = false;
 export const leftOnPurpose = (): boolean => signedOutOnPurpose;
 
-function readSession(): string | null {
-  try {
-    return sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
-  } catch {
-    return null; // storage blocked: the visitor simply starts signed out
-  }
-}
-
-function writeSession(username: string | null, remember: boolean): void {
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(SESSION_KEY);
-    if (username) (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, username);
-  } catch {
-    // Storage blocked: the session lasts until the tab reloads.
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const backend = useBackend();
   const store = useStore();
-  const { users } = useWmsState();
-  const [username, setUsername] = useState<string | null>(readSession);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [ready, setReady] = useState(false);
 
-  // Looked up on every render, so deactivating an account signs it out everywhere at once.
-  const user =
-    users.find((item) => item.username === username && item.active && !item.invited) ?? null;
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await backend.currentUser());
+    } catch (error) {
+      console.error('Could not check the session', error);
+      setUser(null);
+    } finally {
+      setReady(true);
+    }
+  }, [backend]);
+
+  useEffect(() => {
+    void refresh();
+    // Demo: deactivating an account signs it out everywhere at once, so re-check on change.
+    // API: any 401 means the session ended (expired, revoked, signed out elsewhere).
+    if (backend.mode === 'demo') return store.subscribe(() => void refresh());
+    return onUnauthorized(() => setUser(null));
+  }, [backend, store, refresh]);
 
   const signIn = useCallback(
-    (name: string, password: string, remember: boolean): string | null => {
-      const trimmed = name.trim().toLowerCase();
-      const isBypass = trimmed === '' && password === '';
-      const target = isBypass ? DEMO_ADMIN_USERNAME : trimmed;
-      const account = store.getState().users.find((item) => item.username === target);
-      // An account that set its own password (invite or reset) must use it; the rest still
-      // share the demo password.
-      const own = account ? store.checkOwnPassword(account.username, password) : null;
-      const accepted = isBypass || own === true || (own === null && password === DEMO_PASSWORD);
-      // One message for every failure, so the form never reveals which usernames exist.
-      if (!account || !account.active || account.invited || !accepted) {
-        return 'Incorrect username or password.';
-      }
+    async (login: string, password: string, remember: boolean) => {
+      const signedIn = await backend.signIn(login, password, remember);
       signedOutOnPurpose = false;
-      writeSession(account.username, remember);
-      setUsername(account.username);
-      store.touchUser(account.username);
-      return null;
+      setUser(signedIn);
     },
-    [store],
+    [backend],
   );
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
     signedOutOnPurpose = true;
-    writeSession(null, false);
-    setUsername(null);
-  }, []);
+    setUser(null);
+    await backend.signOut();
+  }, [backend]);
 
-  const switchTo = useCallback(
-    (name: string) => {
-      writeSession(name, false);
-      setUsername(name);
-      store.touchUser(name);
-    },
-    [store],
+  const switchTo = useMemo(
+    () =>
+      backend instanceof DemoBackend
+        ? (username: string) => {
+            backend.switchTo(username);
+            void refresh();
+          }
+        : null,
+    [backend, refresh],
   );
 
   const value = useMemo<AuthValue>(
     () => ({
       user,
+      ready,
       signIn,
       signOut,
       switchTo,
-      can: (action) => (user ? can(user.role, action) : false),
+      // The staff console checks staff roles; a partner account is sent to its portal.
+      can: (action) => (user && isStaffRole(user.role) ? can(user.role, action) : false),
     }),
-    [user, signIn, signOut, switchTo],
+    [user, ready, signIn, signOut, switchTo],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -118,7 +114,7 @@ export function useAuth(): AuthValue {
 }
 
 /** The signed-in user. Only for screens rendered inside the protected shell. */
-export function useCurrentUser(): User {
+export function useCurrentUser(): SessionUser {
   const { user } = useAuth();
   if (!user) throw new Error('useCurrentUser was called while signed out.');
   return user;

@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { CONDITION_OPTIONS, Select } from '../components/controls.js';
 import { DataTable, runBatch, type Column } from '../components/DataTable.js';
-import { ActionDialog, ShelfDialog, ShelfSelect } from '../components/dialogs.js';
+import { ActionDialog, ShelfSelect } from '../components/dialogs.js';
 import {
   Button,
   CategoryThumb,
@@ -177,7 +177,7 @@ export function Inspection() {
           {mayInspect && tab === 'awaiting' && (
             <StartButton
               onStart={() => {
-                store.startInspection(user.username, unit.code);
+                store.startInspection(user.id, unit.code);
                 toast(`${unit.code} moved to the QA Area`);
               }}
             />
@@ -257,7 +257,7 @@ export function Inspection() {
                       icon: SearchCheck,
                       run: (picked, clear) => {
                         const result = runBatch(picked, (unit) =>
-                          store.startInspection(user.username, unit.code),
+                          store.startInspection(user.id, unit.code),
                         );
                         clear();
                         if (result.done === 0) {
@@ -305,15 +305,14 @@ export function Inspection() {
         />
       )}
       {repaired && (
-        <ShelfDialog
+        <ActionDialog
           title="Repair complete"
-          description={`Choose the shelf ${repaired.code} goes back to.`}
-          confirmLabel="Restock unit"
-          currentId=""
+          description={`${repaired.code} goes to the QA area for inspection before it can be lent again.`}
+          confirmLabel="Send to inspection"
           onClose={() => setRepaired(null)}
-          onConfirm={(locationId) => {
-            store.completeRepair(user.username, repaired.code, locationId, '');
-            toast(`${repaired.code} repaired and restocked`);
+          onConfirm={() => {
+            store.completeRepair(user.id, repaired.code, '');
+            toast(`${repaired.code} repaired and back in inspection`);
           }}
         />
       )}
@@ -397,7 +396,7 @@ function InspectDialog({
       width={600}
       onClose={onClose}
       onConfirm={() => {
-        store.recordInspection(user.username, unit.code, {
+        store.recordInspection(user.id, unit.code, {
           grade,
           checklist,
           notes,

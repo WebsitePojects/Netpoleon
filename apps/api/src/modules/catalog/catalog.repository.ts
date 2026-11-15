@@ -11,7 +11,14 @@ export class CatalogRepository {
   /** Three queries whatever the size: accessories are aggregated per model, not fetched per row. */
   async catalog(tx: Tx): Promise<Catalog> {
     const categoryRows = await tx
-      .select({ id: categories.id, code: categories.code, name: categories.name })
+      .select({
+        id: categories.id,
+        code: categories.code,
+        name: categories.name,
+        unitCount: sql<number>`(
+          SELECT count(*) FROM assets a JOIN product_models m ON m.id = a.product_model_id
+           WHERE m.category_id = categories.id AND a.status <> 'retired')::int`,
+      })
       .from(categories)
       .orderBy(asc(categories.name));
     const modelRows = await tx
@@ -40,6 +47,10 @@ export class CatalogRepository {
         kind: locations.kind,
         parentId: locations.parentId,
         parentName: parent.name,
+        // Joined query: Drizzle qualifies these, but the subquery still names its own table.
+        unitCount: sql<number>`(
+          SELECT count(*) FROM assets a
+           WHERE a.current_location_id = ${locations.id} AND a.status <> 'retired')::int`,
       })
       .from(locations)
       .leftJoin(parent, eq(parent.id, locations.parentId))
@@ -53,7 +64,7 @@ export class CatalogRepository {
       .values(values)
       .returning({ id: categories.id, code: categories.code, name: categories.name });
     if (!row) throw new Error('Category insert returned no row.');
-    return row;
+    return { ...row, unitCount: 0 };
   }
 
   async insertLocation(

@@ -19,6 +19,16 @@ Imports go down that table only. A package never imports from `apps/`.
 
 ## Inside the web app
 - Pages live in `apps/web/src/pages/`; shared pieces in `src/components/`.
+- **Screens reach data through one `Backend` interface** (`src/backend/types.ts`) whose shapes
+  are the API's contracts. `HttpBackend` calls the API; `DemoBackend` adapts the in-browser
+  demo store to the same shapes. `main.tsx` picks one from `VITE_BACKEND`. Pages load with
+  `useResource(key, load)` and refresh with `invalidate(prefix)`; every dialog takes its
+  Idempotency-Key from `useIntent()`, created once when it opens.
+- Borrowing, inspection, reports, alerts and the dashboard still run on the demo store; with the
+  API connected they show `NeedsLending` instead of mixing invented loans with real units.
+  Slice 3 moves them behind the backend.
+- The browser imports runtime values only from `@wms/contracts/client` (no zod); types may come
+  from the main entry, since `import type` costs nothing in the bundle.
 - **Every list is a `DataTable`** (`src/components/DataTable.tsx`): search, filter dropdowns,
   sortable headers, row selection with batch actions, CSV export (gated by `reports.export`),
   paging, a loading placeholder with the real column widths, stacked rows on phones. A new

@@ -443,3 +443,29 @@ describe('the catalog', () => {
     expect(right.statusCode).toBe(201);
   });
 });
+
+describe('units by code', () => {
+  it('returns exactly the asked-for units, retired ones included', async () => {
+    const { app, cookie } = await signedIn('admin');
+    const first = await registered(app, cookie);
+    const second = await registered(app, cookie);
+    await send(app, 'POST', `/api/v1/assets/${second.assetCode}/retire`, {
+      cookie,
+      headers: intent(),
+      body: { reason: 'Gone' },
+    });
+
+    const response = await send(
+      app,
+      'GET',
+      `/api/v1/assets?codes=${first.assetCode},${second.assetCode.toLowerCase()}&limit=100`,
+      { cookie },
+    );
+    expect(response.statusCode).toBe(200);
+    const codes = response.json<{ items: { assetCode: string }[] }>().items.map((i) => i.assetCode);
+    expect(codes.sort()).toEqual([first.assetCode, second.assetCode].sort());
+
+    const bad = await send(app, 'GET', '/api/v1/assets?codes=NOT-A-CODE', { cookie });
+    expect(bad.statusCode).toBe(400);
+  });
+});

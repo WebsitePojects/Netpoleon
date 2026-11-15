@@ -1,18 +1,21 @@
+import type { Partner } from '@wms/contracts';
 import { Archive, ArchiveRestore, Building2, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { useAuth } from '../auth/auth.js';
+import { invalidate, useBackend, useIntent, useResource } from '../backend/context.js';
+import type { PartnerLoan } from '../backend/types.js';
 import { Select, SkPage } from '../components/controls.js';
-import { DataTable, runBatch, type Column } from '../components/DataTable.js';
+import { DataTable, type Column } from '../components/DataTable.js';
 import { ActionDialog } from '../components/dialogs.js';
-import { Button, Field, LoanChip, PageHead, useToast } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { daysOverdue, LOAN_STATUS_LABELS } from '../data/selectors.js';
+import { Button, Field, FormError, LoanChip, PageHead, useToast } from '../components/ui.js';
+import { LOAN_STATUS_LABELS } from '../data/selectors.js';
 import { WmsError } from '../data/store.js';
-import type { Loan, Partner, PartnerType } from '../data/types.js';
-import { formatDate, toDateKey } from '../lib/dates.js';
-import { usePageReady } from '../lib/hooks.js';
+import type { Loan } from '../data/types.js';
+import { formatDate } from '../lib/dates.js';
 import { NotFound } from './NotFound.js';
+
+type PartnerType = Partner['type'];
 
 export const PARTNER_TYPE_LABELS: Record<PartnerType, string> = {
   partner: 'Partner',
@@ -26,82 +29,58 @@ const TYPE_OPTIONS = (Object.keys(PARTNER_TYPE_LABELS) as PartnerType[]).map((ty
   label: PARTNER_TYPE_LABELS[type],
 }));
 
-const OPEN_STATUSES: Loan['status'][] = ['pending', 'approved', 'released'];
-
-interface PartnerRow {
-  partner: Partner;
-  loans: number;
-  out: number;
-  overdue: number;
-  last: string | null;
-}
-
-/** Loan counts per partner, worked out in one pass over the loans rather than per row. */
-function usePartnerRows(): PartnerRow[] {
-  const { partners, loans } = useWmsState();
-  const store = useStore();
-  return useMemo(() => {
-    const today = toDateKey(new Date());
-    return partners.map((partner) => {
-      const own = loans.filter((loan) => store.partnerOwnsLoan(partner, loan.borrower.company));
-      return {
-        partner,
-        loans: own.length,
-        out: own.filter((loan) => loan.status === 'released').length,
-        overdue: own.filter((loan) => daysOverdue(loan, today) > 0).length,
-        last: own.reduce<string | null>(
-          (latest, loan) =>
-            latest === null || loan.requestedAt > latest ? loan.requestedAt : latest,
-          null,
-        ),
-      };
-    });
-  }, [partners, loans, store]);
-}
-
 export function Partners() {
-  const ready = usePageReady();
-  const store = useStore();
-  const user = useCurrentUser();
+  const backend = useBackend();
   const { can } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const rows = usePartnerRows();
+  const intent = useIntent();
   const [adding, setAdding] = useState(false);
+  const partners = useResource('partners', () => backend.partners());
   const manage = can('partners.manage');
 
-  const archive = (picked: PartnerRow[], archived: boolean, clear: () => void) => {
-    const result = runBatch(
-      picked.filter((row) => row.partner.archived !== archived),
-      (row) => store.setPartnerArchived(user.username, row.partner.id, archived),
-    );
+  /** Archives or restores each selected company, one request each, and says which refused. */
+  const archive = async (picked: Partner[], archived: boolean, clear: () => void) => {
+    let done = 0;
+    let refused = '';
+    for (const partner of picked.filter((item) => (item.status === 'archived') !== archived)) {
+      try {
+        await backend.setPartnerArchived(`${intent.key}-${partner.id}`, partner.id, archived);
+        done += 1;
+      } catch (error) {
+        if (!(error instanceof WmsError)) throw error;
+        refused ||= error.message;
+      }
+    }
+    intent.renew();
     clear();
-    if (result.refused) toast(result.refused, 'error');
-    if (result.done > 0) toast(`${result.done} ${archived ? 'archived' : 'restored'}`);
+    invalidate('partners');
+    if (refused) toast(refused, 'error');
+    if (done > 0) toast(`${done} ${archived ? 'archived' : 'restored'}`);
   };
 
-  const columns: Column<PartnerRow>[] = [
+  const columns: Column<Partner>[] = [
     {
       id: 'name',
       header: 'Company',
       width: '1.7fr',
       skeleton: 'thumb',
-      sort: (row) => row.partner.name,
-      cell: (row) => (
+      sort: (partner) => partner.name,
+      cell: (partner) => (
         <span className="unit-cell">
           <span className="org-mark" aria-hidden="true">
             <Building2 />
           </span>
           <span>
             <Link
-              to={`/partners/${row.partner.id}`}
+              to={`/partners/${partner.id}`}
               className="row-link"
               onClick={(event) => event.stopPropagation()}
             >
-              {row.partner.name}
+              {partner.name}
             </Link>
             <span className="cell-sub" style={{ display: 'block' }}>
-              {row.partner.contacts.length} contact{row.partner.contacts.length === 1 ? '' : 's'}
+              {partner.contacts.length} contact{partner.contacts.length === 1 ? '' : 's'}
             </span>
           </span>
         </span>
@@ -111,8 +90,8 @@ export function Partners() {
       id: 'type',
       header: 'Type',
       skeleton: 'chip',
-      sort: (row) => PARTNER_TYPE_LABELS[row.partner.type],
-      cell: (row) => <span className="chip plain">{PARTNER_TYPE_LABELS[row.partner.type]}</span>,
+      sort: (partner) => PARTNER_TYPE_LABELS[partner.type],
+      cell: (partner) => <span className="chip plain">{PARTNER_TYPE_LABELS[partner.type]}</span>,
     },
     {
       id: 'loans',
@@ -121,43 +100,38 @@ export function Partners() {
       className: 'num',
       width: '0.7fr',
       skeleton: 40,
-      sort: (row) => row.loans,
-      cell: (row) => row.loans,
+      sort: (partner) => partner.loans,
+      cell: (partner) => partner.loans,
     },
     {
-      id: 'out',
-      header: 'Units out',
+      id: 'open',
+      header: 'Open now',
       align: 'right',
+      className: 'num',
       width: '0.7fr',
       skeleton: 40,
-      className: (row) => (row.overdue > 0 ? 'num late' : 'num'),
-      sort: (row) => row.out,
-      cell: (row) => (row.overdue > 0 ? `${row.out} · ${row.overdue} late` : row.out),
+      sort: (partner) => partner.openLoans,
+      cell: (partner) => partner.openLoans,
     },
     {
-      id: 'last',
-      header: 'Last request',
+      id: 'since',
+      header: 'On record since',
       className: 'num',
       skeleton: 90,
-      sort: (row) => row.last ?? '',
-      cell: (row) => (row.last ? formatDate(row.last) : 'Never'),
+      sort: (partner) => partner.createdAt,
+      cell: (partner) => formatDate(partner.createdAt),
     },
     {
       id: 'status',
       header: 'Status',
       width: '0.8fr',
       skeleton: 'chip',
-      sort: (row) => (row.partner.archived ? 1 : 0),
-      cell: (row) =>
-        row.partner.archived ? (
-          <span className="chip" data-tone="retired">
-            Archived
-          </span>
-        ) : (
-          <span className="chip" data-tone="in_stock">
-            Active
-          </span>
-        ),
+      sort: (partner) => partner.status,
+      cell: (partner) => (
+        <span className="chip" data-tone={partner.status === 'archived' ? 'retired' : 'in_stock'}>
+          {partner.status === 'archived' ? 'Archived' : 'Active'}
+        </span>
+      ),
     },
   ];
 
@@ -175,73 +149,75 @@ export function Partners() {
         }
       />
       <div className="card table-card">
-        <DataTable
-          rows={rows}
-          columns={columns}
-          rowKey={(row) => row.partner.id}
-          rowLabel={(row) => row.partner.name}
-          noun="companies"
-          loading={!ready}
-          syncUrl
-          onRowClick={(row) => void navigate(`/partners/${row.partner.id}`)}
-          rowClass={(row) => (row.overdue > 0 ? 'is-late' : undefined)}
-          search={{
-            placeholder: 'Search by company or contact…',
-            text: (row) =>
-              `${row.partner.name} ${row.partner.aliases.join(' ')} ${row.partner.contacts
-                .map((contact) => `${contact.name} ${contact.email}`)
-                .join(' ')}`,
-          }}
-          filters={[
-            {
-              id: 'type',
-              label: 'Type',
-              allLabel: 'All types',
-              options: TYPE_OPTIONS,
-              test: (row, value) => row.partner.type === value,
-            },
-            {
-              id: 'status',
-              label: 'Status',
-              allLabel: 'Active and archived',
-              options: [
-                { value: 'active', label: 'Active only' },
-                { value: 'archived', label: 'Archived only' },
+        {partners.error && !partners.data ? (
+          <FormError message={partners.error} />
+        ) : (
+          <DataTable
+            rows={partners.data ?? []}
+            columns={columns}
+            rowKey={(partner) => partner.id}
+            rowLabel={(partner) => partner.name}
+            noun="companies"
+            loading={partners.loading}
+            syncUrl
+            onRowClick={(partner) => void navigate(`/partners/${partner.id}`)}
+            search={{
+              placeholder: 'Search by company or contact…',
+              text: (partner) =>
+                `${partner.name} ${partner.contacts
+                  .map((contact) => `${contact.fullName} ${contact.email}`)
+                  .join(' ')}`,
+            }}
+            filters={[
+              {
+                id: 'type',
+                label: 'Type',
+                allLabel: 'All types',
+                options: TYPE_OPTIONS,
+                test: (partner, value) => partner.type === value,
+              },
+              {
+                id: 'status',
+                label: 'Status',
+                allLabel: 'Active and archived',
+                options: [
+                  { value: 'active', label: 'Active only' },
+                  { value: 'archived', label: 'Archived only' },
+                ],
+                test: (partner, value) => partner.status === value,
+              },
+            ]}
+            batchActions={
+              manage
+                ? [
+                    {
+                      label: 'Archive',
+                      icon: Archive,
+                      danger: true,
+                      run: (picked, clear) => void archive(picked, true, clear),
+                    },
+                    {
+                      label: 'Restore',
+                      icon: ArchiveRestore,
+                      run: (picked, clear) => void archive(picked, false, clear),
+                    },
+                  ]
+                : []
+            }
+            exportCsv={{
+              name: 'partner-companies',
+              header: ['Company', 'Type', 'Status', 'Contacts', 'Loans', 'Open now'],
+              row: (partner) => [
+                partner.name,
+                PARTNER_TYPE_LABELS[partner.type],
+                partner.status === 'archived' ? 'Archived' : 'Active',
+                partner.contacts.length,
+                partner.loans,
+                partner.openLoans,
               ],
-              test: (row, value) => row.partner.archived === (value === 'archived'),
-            },
-          ]}
-          batchActions={
-            manage
-              ? [
-                  {
-                    label: 'Archive',
-                    icon: Archive,
-                    danger: true,
-                    run: (picked, clear) => archive(picked, true, clear),
-                  },
-                  {
-                    label: 'Restore',
-                    icon: ArchiveRestore,
-                    run: (picked, clear) => archive(picked, false, clear),
-                  },
-                ]
-              : []
-          }
-          exportCsv={{
-            name: 'partner-companies',
-            header: ['Company', 'Type', 'Status', 'Contacts', 'Loans', 'Units out', 'Overdue'],
-            row: (row) => [
-              row.partner.name,
-              PARTNER_TYPE_LABELS[row.partner.type],
-              row.partner.archived ? 'Archived' : 'Active',
-              row.partner.contacts.length,
-              row.loans,
-              row.out,
-              row.overdue,
-            ],
-          }}
-        />
+            }}
+          />
+        )}
       </div>
       {adding && (
         <PartnerDialog
@@ -255,34 +231,33 @@ export function Partners() {
 }
 
 export function PartnerDetail() {
-  const ready = usePageReady();
   const { id = '' } = useParams();
-  const store = useStore();
-  const user = useCurrentUser();
+  const backend = useBackend();
   const { can } = useAuth();
   const toast = useToast();
-  const { partners, loans } = useWmsState();
+  const intent = useIntent();
   const [open, setOpen] = useState<'edit' | 'contact' | null>(null);
-  const partner = partners.find((item) => item.id === id);
-  const history = useMemo(
-    () =>
-      partner
-        ? loans
-            .filter((loan) => store.partnerOwnsLoan(partner, loan.borrower.company))
-            .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
-        : [],
-    [partner, loans, store],
-  );
+  const partner = useResource(`partners:${id}`, () => backend.partner(id));
+  const loans = useResource(`partners:${id}:loans`, () => backend.partnerLoans(id));
+  const data = partner.data;
 
-  if (!partner) return <NotFound what="That partner company does not exist." />;
+  if (partner.error && !data) {
+    return /does not exist|not found/i.test(partner.error) ? (
+      <NotFound what="That partner company does not exist." />
+    ) : (
+      <div className="page">
+        <FormError message={partner.error} />
+      </div>
+    );
+  }
+
   const manage = can('partners.manage');
-  const today = toDateKey(new Date());
-  const openCount = history.filter((loan) => OPEN_STATUSES.includes(loan.status)).length;
-
-  const setArchived = (archived: boolean) => {
+  const run = async (action: () => Promise<Partner>, message: string) => {
     try {
-      store.setPartnerArchived(user.username, partner.id, archived);
-      toast(`${partner.name} ${archived ? 'archived' : 'restored'}`);
+      await action();
+      intent.renew();
+      invalidate('partners');
+      toast(message);
     } catch (error) {
       if (!(error instanceof WmsError)) throw error;
       toast(error.message, 'error');
@@ -292,21 +267,43 @@ export function PartnerDetail() {
   return (
     <div className="page">
       <PageHead
-        crumbs={[{ label: 'Partner companies', to: '/partners' }, { label: partner.name }]}
-        title={partner.name}
-        lead={`${PARTNER_TYPE_LABELS[partner.type]} · ${history.length} loan${history.length === 1 ? '' : 's'} on record`}
+        crumbs={[{ label: 'Partner companies', to: '/partners' }, { label: data?.name ?? '…' }]}
+        title={data?.name ?? 'Loading company…'}
+        {...(data
+          ? {
+              lead: `${PARTNER_TYPE_LABELS[data.type]} · ${data.loans} loan${data.loans === 1 ? '' : 's'} on record`,
+            }
+          : {})}
         actions={
-          manage && (
+          manage &&
+          data && (
             <>
               <Button icon={Pencil} onClick={() => setOpen('edit')}>
                 Edit
               </Button>
-              {partner.archived ? (
-                <Button icon={ArchiveRestore} onClick={() => setArchived(false)}>
+              {data.status === 'archived' ? (
+                <Button
+                  icon={ArchiveRestore}
+                  onClick={() =>
+                    void run(
+                      () => backend.setPartnerArchived(intent.key, data.id, false),
+                      `${data.name} restored`,
+                    )
+                  }
+                >
                   Restore
                 </Button>
               ) : (
-                <Button variant="danger" icon={Archive} onClick={() => setArchived(true)}>
+                <Button
+                  variant="danger"
+                  icon={Archive}
+                  onClick={() =>
+                    void run(
+                      () => backend.setPartnerArchived(intent.key, data.id, true),
+                      `${data.name} archived`,
+                    )
+                  }
+                >
                   Archive
                 </Button>
               )}
@@ -314,7 +311,7 @@ export function PartnerDetail() {
           )
         }
       />
-      {!ready ? (
+      {!data ? (
         <SkPage kind="detail" />
       ) : (
         <div className="grid-2">
@@ -322,104 +319,9 @@ export function PartnerDetail() {
             <section className="card table-card" aria-labelledby="loans-title">
               <div className="card-head" style={{ paddingBottom: 14 }}>
                 <h2 id="loans-title">Borrowing history</h2>
-                <span className="muted num">{openCount} open</span>
+                <span className="muted num">{data.openLoans} open</span>
               </div>
-              <DataTable
-                rows={history}
-                columns={[
-                  {
-                    id: 'number',
-                    header: 'Transaction',
-                    sort: (loan) => loan.number,
-                    cell: (loan) => (
-                      <Link to={`/borrow/${loan.number}`} className="row-link mono">
-                        {loan.number}
-                      </Link>
-                    ),
-                  },
-                  {
-                    id: 'unit',
-                    header: 'Demo unit',
-                    width: '1.4fr',
-                    sort: (loan) => `${loan.brand} ${loan.model}`,
-                    cell: (loan) => (
-                      <>
-                        {loan.brand} {loan.model}
-                        <span className="cell-sub mono" style={{ display: 'block' }}>
-                          {loan.unitCode ?? 'Not assigned yet'}
-                        </span>
-                      </>
-                    ),
-                  },
-                  {
-                    id: 'contact',
-                    header: 'Contact',
-                    sort: (loan) => loan.borrower.name,
-                    cell: (loan) => loan.borrower.name,
-                  },
-                  {
-                    id: 'due',
-                    header: 'Due',
-                    className: 'num',
-                    sort: (loan) => loan.dueDate,
-                    cell: (loan) => {
-                      const late = daysOverdue(loan, today);
-                      return (
-                        <>
-                          {formatDate(loan.dueDate)}
-                          {late > 0 && <span className="late"> · {late}d late</span>}
-                        </>
-                      );
-                    },
-                  },
-                  {
-                    id: 'status',
-                    header: 'Status',
-                    sort: (loan) => LOAN_STATUS_LABELS[loan.status],
-                    cell: (loan) => <LoanChip status={loan.status} />,
-                  },
-                ]}
-                rowKey={(loan) => loan.number}
-                noun="loans"
-                pageSize={8}
-                rowClass={(loan) => (daysOverdue(loan, today) > 0 ? 'is-late' : undefined)}
-                empty={{
-                  title: 'No loans yet',
-                  body: 'Requests filed for this company appear here.',
-                }}
-                filters={[
-                  {
-                    id: 'status',
-                    label: 'Status',
-                    allLabel: 'All statuses',
-                    options: (Object.keys(LOAN_STATUS_LABELS) as Loan['status'][]).map(
-                      (status) => ({ value: status, label: LOAN_STATUS_LABELS[status] }),
-                    ),
-                    test: (loan, value) => loan.status === value,
-                  },
-                ]}
-                exportCsv={{
-                  name: `loans-${partner.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-                  header: [
-                    'Transaction',
-                    'Brand',
-                    'Model',
-                    'Asset code',
-                    'Contact',
-                    'Due',
-                    'Status',
-                  ],
-                  row: (loan) => [
-                    loan.number,
-                    loan.brand,
-                    loan.model,
-                    loan.unitCode ?? '',
-                    loan.borrower.name,
-                    loan.dueDate,
-                    LOAN_STATUS_LABELS[loan.status],
-                  ],
-                }}
-              />
+              <LoanHistory name={data.name} loans={loans.data ?? []} loading={loans.loading} />
             </section>
           </div>
 
@@ -429,25 +331,22 @@ export function PartnerDetail() {
                 <h2 id="org-facts" className="section-title">
                   Company
                 </h2>
-                <span className="chip" data-tone={partner.archived ? 'retired' : 'in_stock'}>
-                  {partner.archived ? 'Archived' : 'Active'}
+                <span
+                  className="chip"
+                  data-tone={data.status === 'archived' ? 'retired' : 'in_stock'}
+                >
+                  {data.status === 'archived' ? 'Archived' : 'Active'}
                 </span>
               </div>
               <dl className="facts">
                 <div>
                   <dt>Type</dt>
-                  <dd>{PARTNER_TYPE_LABELS[partner.type]}</dd>
+                  <dd>{PARTNER_TYPE_LABELS[data.type]}</dd>
                 </div>
                 <div>
                   <dt>On record since</dt>
-                  <dd>{formatDate(partner.createdAt)}</dd>
+                  <dd>{formatDate(data.createdAt)}</dd>
                 </div>
-                {partner.aliases.length > 0 && (
-                  <div>
-                    <dt>Formerly</dt>
-                    <dd>{partner.aliases.join(', ')}</dd>
-                  </div>
-                )}
               </dl>
             </section>
 
@@ -462,14 +361,14 @@ export function PartnerDetail() {
                   </Button>
                 )}
               </div>
-              {partner.contacts.length === 0 ? (
+              {data.contacts.length === 0 ? (
                 <p className="muted">No contacts yet.</p>
               ) : (
                 <ul className="contact-list">
-                  {partner.contacts.map((contact) => (
+                  {data.contacts.map((contact) => (
                     <li key={contact.id}>
                       <span>
-                        <strong>{contact.name}</strong>
+                        <strong>{contact.fullName}</strong>
                         <span className="cell-sub">
                           {contact.email}
                           {contact.phone && ` · ${contact.phone}`}
@@ -479,11 +378,13 @@ export function PartnerDetail() {
                         <button
                           type="button"
                           className="icon-btn"
-                          aria-label={`Remove ${contact.name}`}
-                          onClick={() => {
-                            store.removePartnerContact(user.username, partner.id, contact.id);
-                            toast(`${contact.name} removed`);
-                          }}
+                          aria-label={`Remove ${contact.fullName}`}
+                          onClick={() =>
+                            void run(
+                              () => backend.removeContact(intent.key, data.id, contact.id),
+                              `${contact.fullName} removed`,
+                            )
+                          }
                         >
                           <Trash2 aria-hidden="true" />
                         </button>
@@ -496,9 +397,106 @@ export function PartnerDetail() {
           </div>
         </div>
       )}
-      {open === 'edit' && <PartnerDialog partner={partner} onClose={() => setOpen(null)} />}
-      {open === 'contact' && <ContactDialog partner={partner} onClose={() => setOpen(null)} />}
+      {data && open === 'edit' && <PartnerDialog partner={data} onClose={() => setOpen(null)} />}
+      {data && open === 'contact' && <ContactDialog partner={data} onClose={() => setOpen(null)} />}
     </div>
+  );
+}
+
+function LoanHistory({
+  name,
+  loans,
+  loading,
+}: {
+  name: string;
+  loans: PartnerLoan[];
+  loading: boolean;
+}) {
+  return (
+    <DataTable
+      rows={loans}
+      loading={loading}
+      columns={[
+        {
+          id: 'number',
+          header: 'Transaction',
+          sort: (loan) => loan.number,
+          cell: (loan) => (
+            <Link to={`/borrow/${loan.number}`} className="row-link mono">
+              {loan.number}
+            </Link>
+          ),
+        },
+        {
+          id: 'unit',
+          header: 'Demo unit',
+          width: '1.4fr',
+          sort: (loan) => `${loan.brand} ${loan.model}`,
+          cell: (loan) => (
+            <>
+              {loan.brand} {loan.model}
+              <span className="cell-sub mono" style={{ display: 'block' }}>
+                {loan.unitCode ?? 'Not assigned yet'}
+              </span>
+            </>
+          ),
+        },
+        {
+          id: 'contact',
+          header: 'Contact',
+          sort: (loan) => loan.contactName,
+          cell: (loan) => loan.contactName,
+        },
+        {
+          id: 'due',
+          header: 'Due',
+          className: 'num',
+          sort: (loan) => loan.dueDate,
+          cell: (loan) => (
+            <>
+              {formatDate(loan.dueDate)}
+              {loan.daysLate > 0 && <span className="late"> · {loan.daysLate}d late</span>}
+            </>
+          ),
+        },
+        {
+          id: 'status',
+          header: 'Status',
+          sort: (loan) => loan.status,
+          cell: (loan) => <LoanChip status={loan.status as Loan['status']} />,
+        },
+      ]}
+      rowKey={(loan) => loan.number}
+      noun="loans"
+      pageSize={8}
+      rowClass={(loan) => (loan.daysLate > 0 ? 'is-late' : undefined)}
+      empty={{ title: 'No loans yet', body: 'Requests filed for this company appear here.' }}
+      filters={[
+        {
+          id: 'status',
+          label: 'Status',
+          allLabel: 'All statuses',
+          options: (Object.keys(LOAN_STATUS_LABELS) as Loan['status'][]).map((status) => ({
+            value: status,
+            label: LOAN_STATUS_LABELS[status],
+          })),
+          test: (loan, value) => loan.status === value,
+        },
+      ]}
+      exportCsv={{
+        name: `loans-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        header: ['Transaction', 'Brand', 'Model', 'Asset code', 'Contact', 'Due', 'Status'],
+        row: (loan) => [
+          loan.number,
+          loan.brand,
+          loan.model,
+          loan.unitCode ?? '',
+          loan.contactName,
+          loan.dueDate,
+          loan.status,
+        ],
+      }}
+    />
   );
 }
 
@@ -511,9 +509,9 @@ function PartnerDialog({
   onClose: () => void;
   onSaved?: (id: string) => void;
 }) {
-  const store = useStore();
-  const user = useCurrentUser();
+  const backend = useBackend();
   const toast = useToast();
+  const intent = useIntent();
   const [name, setName] = useState(partner?.name ?? '');
   const [type, setType] = useState<PartnerType>(partner?.type ?? 'partner');
   return (
@@ -526,15 +524,16 @@ function PartnerDialog({
       }
       confirmLabel={partner ? 'Save changes' : 'Add company'}
       onClose={onClose}
-      onConfirm={() => {
+      onConfirmAsync={async () => {
         if (partner) {
-          store.updatePartner(user.username, partner.id, { name, type });
+          await backend.editPartner(intent.key, partner.id, { name, type });
           toast(`${name.trim()} updated`);
         } else {
-          const added = store.addPartner(user.username, { name, type });
+          const added = await backend.addPartner(intent.key, { name, type });
           toast(`${added.name} added`);
           onSaved?.(added.id);
         }
+        invalidate('partners');
       }}
     >
       <Field label="Company name">
@@ -557,9 +556,9 @@ function PartnerDialog({
 }
 
 function ContactDialog({ partner, onClose }: { partner: Partner; onClose: () => void }) {
-  const store = useStore();
-  const user = useCurrentUser();
+  const backend = useBackend();
   const toast = useToast();
+  const intent = useIntent();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -569,8 +568,9 @@ function ContactDialog({ partner, onClose }: { partner: Partner; onClose: () => 
       description="Contact details are personal data: they are used only to account for borrowed units."
       confirmLabel="Add contact"
       onClose={onClose}
-      onConfirm={() => {
-        store.addPartnerContact(user.username, partner.id, { name, email, phone });
+      onConfirmAsync={async () => {
+        await backend.addContact(intent.key, partner.id, { fullName: name, email, phone });
+        invalidate('partners');
         toast(`${name.trim()} added`);
       }}
     >

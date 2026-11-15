@@ -1,19 +1,14 @@
 import { SkPage } from '../components/controls.js';
 import { Info, Monitor, Moon, Sun } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useCurrentUser } from '../auth/auth.js';
 import { Avatar, Button, Field, FormError, PageHead, useToast } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { DEMO_PASSWORD } from '../data/seed.js';
-import {
-  ACTION_LABELS,
-  can,
-  ROLE_LABELS,
-  ROLE_SUMMARIES,
-  type Action,
-} from '../data/permissions.js';
+import { useBackend, useResource } from '../backend/context.js';
+import { useWmsState } from '../data/context.js';
+import { ACTION_LABELS, can, roleLabel, ROLE_SUMMARIES, type Action } from '../data/permissions.js';
+import { describeEntry } from '../lib/audit.js';
 import { formatDateTime } from '../lib/dates.js';
-import { passwordProblem } from '../lib/passwords.js';
+import { isStaffRole, MIN_PASSWORD_LENGTH, passwordProblem } from '@wms/contracts/client';
 import { usePageReady, useSubmit, useTheme, type ThemeChoice } from '../lib/hooks.js';
 
 const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
@@ -27,37 +22,37 @@ const RECENT_ACTIONS = 8;
 export function Profile() {
   const ready = usePageReady();
   const user = useCurrentUser();
-  const store = useStore();
-  const { audit, settings } = useWmsState();
+  const backend = useBackend();
+  const { settings } = useWmsState();
   const [theme, setTheme] = useTheme();
   const toast = useToast();
   const submit = useSubmit();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [mismatch, setMismatch] = useState<string | null>(null);
+  const minLength = backend.mode === 'demo' ? settings.passwordMinLength : MIN_PASSWORD_LENGTH;
 
-  const mine = useMemo(
-    () =>
-      audit
-        .filter((entry) => entry.actor === user.username)
-        .slice(-RECENT_ACTIONS)
-        .reverse(),
-    [audit, user.username],
+  const people = useResource('users', () => backend.users());
+  const me = people.data?.find((person) => person.id === user.id);
+  const activity = useResource(`audit:actor:${user.id}`, () =>
+    backend.audit({ actorId: user.id, limit: RECENT_ACTIONS }),
   );
-  const allowed = (Object.keys(ACTION_LABELS) as Action[]).filter((action) =>
-    can(user.role, action),
-  );
+  const mine = activity.data?.items ?? [];
+  const role = isStaffRole(user.role) ? user.role : null;
+  const allowed = role
+    ? (Object.keys(ACTION_LABELS) as Action[]).filter((action) => can(role, action))
+    : [];
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const problem = passwordProblem(next, settings.passwordMinLength);
+    const problem = passwordProblem(next, minLength);
     if (problem) {
       setMismatch(problem);
       return;
     }
     setMismatch(null);
-    void submit.run(() => {
-      store.changePassword(user.username, current, next, DEMO_PASSWORD);
+    void submit.runAsync(async () => {
+      await backend.changePassword(current, next);
       setCurrent('');
       setNext('');
       toast('Password changed');
@@ -74,17 +69,13 @@ export function Profile() {
           <div className="stack">
             <section className="card card-pad">
               <div className="row" style={{ gap: 16, marginBottom: 12 }}>
-                <Avatar name={user.name} large />
+                <Avatar name={user.fullName} large />
                 <div>
-                  <h2 className="section-title">{user.name}</h2>
-                  <p className="muted">{user.title}</p>
+                  <h2 className="section-title">{user.fullName}</h2>
+                  <p className="muted">{me?.jobTitle ?? ''}</p>
                 </div>
               </div>
               <dl className="facts">
-                <div>
-                  <dt>Username</dt>
-                  <dd className="mono">{user.username}</dd>
-                </div>
                 <div>
                   <dt>Email</dt>
                   <dd>{user.email}</dd>
@@ -92,15 +83,17 @@ export function Profile() {
                 <div>
                   <dt>Role</dt>
                   <dd>
-                    {ROLE_LABELS[user.role]}
-                    <span className="cell-sub" style={{ display: 'block' }}>
-                      {ROLE_SUMMARIES[user.role]}
-                    </span>
+                    {roleLabel(user.role)}
+                    {role && (
+                      <span className="cell-sub" style={{ display: 'block' }}>
+                        {ROLE_SUMMARIES[role]}
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt>Last sign-in</dt>
-                  <dd className="num">{formatDateTime(user.lastActiveAt)}</dd>
+                  <dd className="num">{formatDateTime(me?.lastLoginAt ?? null)}</dd>
                 </div>
               </dl>
             </section>
@@ -147,8 +140,9 @@ export function Profile() {
               <form className="form-grid" onSubmit={onSubmit} noValidate>
                 <p className="banner info" role="note">
                   <Info aria-hidden="true" />
-                  Changing it signs you in with the new password from now on. Demo build: until you
-                  change it, the shared demo password works.
+                  Changing it signs out every other device where you are signed in.
+                  {backend.mode === 'demo' &&
+                    ' Demo build: until you change it, the shared demo password works.'}
                 </p>
                 <Field label="Current password">
                   <input
@@ -159,10 +153,7 @@ export function Profile() {
                     onChange={(event) => setCurrent(event.target.value)}
                   />
                 </Field>
-                <Field
-                  label="New password"
-                  hint={`At least ${settings.passwordMinLength} characters.`}
-                >
+                <Field label="New password" hint={`At least ${minLength} characters.`}>
                   <input
                     className="input"
                     type="password"
@@ -195,22 +186,25 @@ export function Profile() {
                     Nothing recorded yet.
                   </p>
                 ) : (
-                  mine.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="feed-item"
-                      style={{ gridTemplateColumns: '1fr auto' }}
-                    >
-                      <span>
-                        <strong className="mono">{entry.action}</strong>
-                        <span className="cell-sub" style={{ display: 'block' }}>
-                          {entry.target}
-                          {entry.detail ? ` · ${entry.detail}` : ''}
+                  mine.map((entry) => {
+                    const { record, detail } = describeEntry(entry);
+                    return (
+                      <div
+                        key={entry.id}
+                        className="feed-item"
+                        style={{ gridTemplateColumns: '1fr auto' }}
+                      >
+                        <span>
+                          <strong className="mono">{entry.action}</strong>
+                          <span className="cell-sub" style={{ display: 'block' }}>
+                            {record}
+                            {detail ? ` · ${detail}` : ''}
+                          </span>
                         </span>
-                      </span>
-                      <time dateTime={entry.at}>{formatDateTime(entry.at)}</time>
-                    </div>
-                  ))
+                        <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </section>

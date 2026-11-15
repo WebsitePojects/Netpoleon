@@ -28,7 +28,13 @@ const optionalText = (max: number) =>
     .transform((value) => (value === '' ? null : value))
     .nullable();
 
-export const categorySchema = z.strictObject({ id: z.uuid(), code: z.string(), name: z.string() });
+export const categorySchema = z.strictObject({
+  id: z.uuid(),
+  code: z.string(),
+  name: z.string(),
+  /** Units in the category, retired ones excluded. */
+  unitCount: z.number().int(),
+});
 export type Category = z.infer<typeof categorySchema>;
 
 export const locationSchema = z.strictObject({
@@ -38,6 +44,8 @@ export const locationSchema = z.strictObject({
   kind: z.enum(LOCATION_KINDS),
   parentId: z.uuid().nullable(),
   parentName: z.string().nullable(),
+  /** Units on this location now, retired ones excluded. */
+  unitCount: z.number().int(),
 });
 export type Location = z.infer<typeof locationSchema>;
 
@@ -118,6 +126,8 @@ export const movementSchema = z.strictObject({
   toLocation: z.string().nullable(),
   actorName: z.string(),
   note: z.string().nullable(),
+  /** The loan the movement belongs to (release, return), or null. */
+  loanNumber: z.string().nullable(),
   occurredAt: z.iso.datetime({ offset: true }),
 });
 export type Movement = z.infer<typeof movementSchema>;
@@ -137,6 +147,13 @@ export const ASSET_SORTS = ['code', '-code', 'newest'] as const;
  */
 export const assetListQuerySchema = z.object({
   q: z.string().trim().max(80).optional(),
+  /** Exact asset codes, comma-separated: the label sheet asks for the units it prints. */
+  codes: z
+    .string()
+    .max(1600)
+    .transform((value) => value.split(',').map((code) => code.trim().toUpperCase()))
+    .pipe(z.array(z.string().regex(/^NTP-[A-Z]{2,4}-\d{5}$/)).max(MAX_PAGE_SIZE))
+    .optional(),
   status: z.enum(ASSET_STATUSES).optional(),
   categoryId: z.uuid().optional(),
   locationId: z.uuid().optional(),

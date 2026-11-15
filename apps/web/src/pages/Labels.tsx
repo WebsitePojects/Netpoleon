@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AssetLabel } from '../components/AssetLabel.js';
 import { Select, SuggestInput } from '../components/controls.js';
 import { Button, Empty, Field, PageHead, useToast } from '../components/ui.js';
+import { useBackend, useResource } from '../backend/context.js';
 import { useWmsState } from '../data/context.js';
 import type { Settings } from '../data/types.js';
 
@@ -19,8 +20,13 @@ const MAX_COPIES = 3;
  * Label sheet for printing. The units come from `?codes=` (the Units list sends its
  * selection here) and can be added or removed on the page; the sheet itself is what prints.
  */
+const MAX_CODES = 100;
+const SUGGESTIONS = 7;
+const ASSET_CODE = /^NTP-[A-Z]{2,4}-\d{5}$/;
+
 export function Labels() {
-  const { units, settings } = useWmsState();
+  const backend = useBackend();
+  const { settings } = useWmsState();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [entry, setEntry] = useState('');
@@ -28,18 +34,34 @@ export function Labels() {
   const [copies, setCopies] = useState('1');
   const [showSerial, setShowSerial] = useState(settings.labelShowsSerial);
 
-  const byCode = useMemo(() => new Map(units.map((unit) => [unit.code, unit])), [units]);
-  const codes = useMemo(
+  const asked = useMemo(
     () =>
-      [
-        ...new Set((params.get('codes') ?? '').split(',').map((code) => code.trim().toUpperCase())),
-      ].filter((code) => byCode.has(code)),
-    [params, byCode],
+      [...new Set((params.get('codes') ?? '').split(',').map((code) => code.trim().toUpperCase()))]
+        .filter((code) => ASSET_CODE.test(code))
+        .slice(0, MAX_CODES),
+    [params],
   );
-  const printable = useMemo(
-    () => units.filter((unit) => unit.status !== 'retired').map((unit) => unit.code),
-    [units],
+  // One request for every unit on the sheet, not one per label.
+  const units = useResource(`units:labels:${asked.join(',')}`, () =>
+    asked.length
+      ? backend.units({ codes: asked, sort: 'code', limit: MAX_CODES })
+      : Promise.resolve({ items: [], total: 0, nextCursor: null }),
   );
+  const byCode = useMemo(
+    () => new Map((units.data?.items ?? []).map((unit) => [unit.assetCode, unit])),
+    [units.data],
+  );
+  const codes = asked.filter((code) => byCode.has(code));
+  // Suggestions come from a server search, so a warehouse of any size offers the right few.
+  const term = entry.trim();
+  const found = useResource(`units:suggest:${term}`, () =>
+    term.length >= 2
+      ? backend.units({ q: term, sort: 'code', limit: SUGGESTIONS })
+      : Promise.resolve({ items: [], total: 0, nextCursor: null }),
+  );
+  const printable = (found.data?.items ?? [])
+    .filter((unit) => unit.status !== 'retired')
+    .map((unit) => unit.assetCode);
 
   const setCodes = (next: string[]) => {
     const updated = new URLSearchParams(params);
@@ -52,11 +74,12 @@ export function Labels() {
     event?.preventDefault();
     const code = entry.trim().toUpperCase();
     if (!code) return;
-    if (!byCode.has(code)) {
-      toast(`No unit has the asset code ${code}`, 'error');
+    if (!ASSET_CODE.test(code)) {
+      toast(`${code} is not an asset code, such as NTP-FW-00001`, 'error');
       return;
     }
-    if (!codes.includes(code)) setCodes([...codes, code]);
+    // The sheet looks the code up; a code no unit has simply does not appear on it.
+    if (!asked.includes(code)) setCodes([...asked, code]);
     setEntry('');
   };
 
@@ -141,7 +164,7 @@ export function Labels() {
                     <button
                       type="button"
                       aria-label={`Remove ${code}`}
-                      onClick={() => setCodes(codes.filter((item) => item !== code))}
+                      onClick={() => setCodes(asked.filter((item) => item !== code))}
                     >
                       <X aria-hidden="true" />
                     </button>
@@ -168,7 +191,12 @@ export function Labels() {
                 return unit ? (
                   <AssetLabel
                     key={`${code}-${copy}`}
-                    unit={unit}
+                    unit={{
+                      code: unit.assetCode,
+                      brand: unit.model.brand,
+                      model: unit.model.modelName,
+                      serial: unit.serialNumber,
+                    }}
                     size={size}
                     showSerial={showSerial}
                   />

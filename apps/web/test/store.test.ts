@@ -166,8 +166,10 @@ describe('the seven-step lifecycle', () => {
       locationId: null,
     });
     expect(unitOf(unit.code)).toMatchObject({ status: 'for_repair', locationId: 'repair-bench' });
-    store.completeRepair('marco', unit.code, 'shelf-c-2', '');
-    expect(unitOf(unit.code)).toMatchObject({ status: 'in_stock', locationId: 'shelf-c-2' });
+    store.completeRepair('marco', unit.code, '');
+    expect(unitOf(unit.code)).toMatchObject({ status: 'under_inspection', locationId: 'qa-area' });
+    store.recordInspection('marco', unit.code, PASSING_INSPECTION);
+    expect(unitOf(unit.code)).toMatchObject({ status: 'in_stock', locationId: 'shelf-c-1' });
   });
 });
 

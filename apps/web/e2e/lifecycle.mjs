@@ -127,8 +127,8 @@ async function workflow(browser) {
     await page.goto(`${BASE}/units`);
     await page.getByRole('button', { name: 'Add Asset' }).click();
     await choose(page, dialog(page).getByLabel('Category'), 'FW');
-    await dialog(page).getByLabel('Brand', { exact: true }).fill('Fortinet');
-    await dialog(page).getByLabel('Model', { exact: true }).fill('FG-60F');
+    // Models come from the catalogue; a known model brings its accessories with it.
+    await choose(page, dialog(page).getByLabel('Model', { exact: true }), 'FW|Fortinet|FG-60F');
     await dialog(page).getByLabel('Serial number').fill(`E2E${Date.now()}`);
     await choose(page, dialog(page).getByLabel('Shelf location'), 'shelf-c-1');
     await dialog(page).getByRole('button', { name: 'Register unit' }).click();
@@ -214,8 +214,8 @@ async function workflow(browser) {
     const serial = (await unitOf(page, unitCode)).serial;
     await page.goto(`${BASE}/units`);
     await page.getByRole('button', { name: 'Add Asset' }).click();
-    await dialog(page).getByLabel('Brand', { exact: true }).fill('Fortinet');
-    await dialog(page).getByLabel('Model', { exact: true }).fill('FG-60F');
+    await choose(page, dialog(page).getByLabel('Category'), 'FW');
+    await choose(page, dialog(page).getByLabel('Model', { exact: true }), 'FW|Fortinet|FG-60F');
     await dialog(page).getByLabel('Serial number').fill(serial);
     await dialog(page).getByRole('button', { name: 'Register unit' }).click();
     await dialog(page)
@@ -426,11 +426,11 @@ async function workflow(browser) {
       'for repair',
     );
     await page.getByRole('button', { name: 'Repair complete' }).click();
-    await dialog(page).getByRole('button', { name: 'Restock unit' }).click();
+    await dialog(page).getByRole('button', { name: 'Send to inspection' }).click();
     await waitForState(
       page,
-      (state) => state.units.find((unit) => unit.code === unitCode).status === 'in_stock',
-      'repaired',
+      (state) => state.units.find((unit) => unit.code === unitCode).status === 'under_inspection',
+      'back in inspection',
     );
   });
 
@@ -521,6 +521,7 @@ async function workflow(browser) {
     await page.locator('.table tbody tr').first().waitFor();
     await page.getByRole('button', { name: 'Asset Code' }).click();
     await page.locator('th[aria-sort="ascending"]', { hasText: 'Asset Code' }).waitFor();
+    await page.locator('.table[aria-busy="false"]').waitFor();
     const ascending = await codes();
     assert(
       ascending.join() === [...ascending].sort().join(),
@@ -528,6 +529,7 @@ async function workflow(browser) {
     );
     await page.getByRole('button', { name: 'Asset Code' }).click();
     await page.locator('th[aria-sort="descending"]', { hasText: 'Asset Code' }).waitFor();
+    await page.locator('.table[aria-busy="false"]').waitFor();
     const descending = await codes();
     assert(descending[0] > descending.at(-1), 'not descending');
 
@@ -558,10 +560,9 @@ async function workflow(browser) {
   await check('an invited user sets a password through a single-use link', async () => {
     await page.goto(`${BASE}/users`);
     await page.getByRole('button', { name: 'Add user' }).click();
-    await dialog(page).getByLabel('Username').fill('e2einvite');
     await dialog(page).getByLabel('Full name').fill('E2E Invitee');
     await dialog(page).getByLabel('Email').fill('e2e.invitee@netpoleon.example');
-    await dialog(page).getByRole('button', { name: 'Add user' }).click();
+    await dialog(page).getByRole('button', { name: 'Send invitation' }).click();
     const link = await page.getByLabel('Invitation link').inputValue();
     await page.getByRole('button', { name: 'Done' }).click();
     await page.getByRole('button', { name: /Account menu/ }).click();
@@ -571,7 +572,8 @@ async function workflow(browser) {
     await page.getByPlaceholder('Repeat the new password').fill('quiet-harbour-ninety');
     await page.getByRole('button', { name: 'Create account' }).click();
     await page.getByText('Your account is ready').waitFor();
-    await page.getByPlaceholder('Username').fill('e2einvite');
+    // People sign in with their email; the demo also accepts its usernames.
+    await page.getByPlaceholder('Username').fill('e2e.invitee@netpoleon.example');
     await page.getByPlaceholder('Password').fill('quiet-harbour-ninety');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL(`${BASE}/`);

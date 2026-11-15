@@ -24,12 +24,15 @@ export function ActionDialog({
   danger = false,
   onClose,
   onConfirm,
+  onConfirmAsync,
   canConfirm = true,
   width,
   children,
 }: BaseProps & {
   /** Throws `WmsError` to keep the dialog open and show the message. */
-  onConfirm: () => void;
+  onConfirm?: () => void;
+  /** The same for a backend call; a rejected promise keeps the dialog open. */
+  onConfirmAsync?: () => Promise<unknown>;
   canConfirm?: boolean;
   width?: number;
   children?: ReactNode;
@@ -39,7 +42,10 @@ export function ActionDialog({
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    void submit.run(onConfirm).then((done) => {
+    const confirmed = onConfirmAsync
+      ? submit.runAsync(onConfirmAsync)
+      : submit.run(onConfirm ?? (() => undefined));
+    void confirmed.then((done) => {
       if (done) onClose();
     });
   };
@@ -80,13 +86,21 @@ export function ReasonDialog({
   label,
   placeholder,
   onConfirm,
+  onConfirmAsync,
   ...base
-}: BaseProps & { label: string; placeholder?: string; onConfirm: (reason: string) => void }) {
+}: BaseProps & {
+  label: string;
+  placeholder?: string;
+  onConfirm?: (reason: string) => void;
+  onConfirmAsync?: (reason: string) => Promise<unknown>;
+}) {
   const [reason, setReason] = useState('');
   return (
     <ActionDialog
       {...base}
-      onConfirm={() => onConfirm(reason)}
+      {...(onConfirmAsync
+        ? { onConfirmAsync: () => onConfirmAsync(reason) }
+        : { onConfirm: () => onConfirm?.(reason) })}
       canConfirm={reason.trim().length > 0}
     >
       <Field label={label}>
@@ -126,16 +140,36 @@ export function ShelfSelect({
 
 export function ShelfDialog({
   currentId,
+  shelves,
   onConfirm,
+  onConfirmAsync,
   ...base
-}: BaseProps & { currentId: string; onConfirm: (locationId: string) => void }) {
+}: BaseProps & {
+  currentId: string;
+  /** Shelves to offer; the demo store's shelves when left out. */
+  shelves?: { value: string; label: string; hint?: string | undefined }[];
+  onConfirm?: (locationId: string) => void;
+  onConfirmAsync?: (locationId: string) => Promise<unknown>;
+}) {
   const { locations } = useWmsState();
-  const shelves = locations.filter((item) => item.kind === 'shelf');
-  const initial = shelves.find((item) => item.id === currentId) ?? shelves[0];
-  const [locationId, setLocationId] = useState(initial?.id ?? '');
+  const options =
+    shelves ??
+    locations
+      .filter((item) => item.kind === 'shelf')
+      .map((item) => ({ value: item.id, label: item.name, hint: item.zone }));
+  // Start on a different shelf than the current one: moving to where it is would be refused.
+  const initial = options.find((item) => item.value !== currentId) ?? options[0];
+  const [locationId, setLocationId] = useState(initial?.value ?? '');
   return (
-    <ActionDialog {...base} onConfirm={() => onConfirm(locationId)}>
-      <ShelfSelect value={locationId} onChange={setLocationId} />
+    <ActionDialog
+      {...base}
+      {...(onConfirmAsync
+        ? { onConfirmAsync: () => onConfirmAsync(locationId) }
+        : { onConfirm: () => onConfirm?.(locationId) })}
+    >
+      <Field label="Shelf">
+        <Select value={locationId} onChange={setLocationId} options={options} />
+      </Field>
     </ActionDialog>
   );
 }

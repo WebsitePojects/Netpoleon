@@ -3,7 +3,6 @@ import { useMemo, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SkPage } from '../components/controls.js';
 import { DataTable, type Column } from '../components/DataTable.js';
-import { useAuth } from '../auth/auth.js';
 import { Donut, GroupedBars, HBars, type BarSeries } from '../components/charts.js';
 import { PageHead, StatusChip, Tabs, type TabItem } from '../components/ui.js';
 import { useWmsState } from '../data/context.js';

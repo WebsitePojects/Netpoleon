@@ -24,7 +24,9 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { LOAN_STATUS_LABELS, STATUS_LABELS } from '../data/selectors.js';
+import type { AssetStatus } from '@wms/contracts';
+import { LOAN_STATUS_LABELS } from '../data/selectors.js';
+import { ASSET_STATUS_LABELS } from '../lib/labels.js';
 import type { Loan, Unit, UnitStatus } from '../data/types.js';
 import { useLiquidInk } from '../lib/hooks.js';
 
@@ -84,11 +86,17 @@ export function Button({
   );
 }
 
+// The two database statuses the demo never had borrow the nearest colour.
+const STATUS_TONES: Partial<Record<AssetStatus, UnitStatus>> = {
+  registered: 'returned',
+  lost: 'for_repair',
+};
+
 export function StatusChip({
   status,
   reserved = false,
 }: {
-  status: UnitStatus;
+  status: AssetStatus;
   reserved?: boolean;
 }) {
   if (status === 'in_stock' && reserved) {
@@ -99,8 +107,8 @@ export function StatusChip({
     );
   }
   return (
-    <span className="chip" data-tone={status}>
-      {STATUS_LABELS[status]}
+    <span className="chip" data-tone={STATUS_TONES[status] ?? status}>
+      {ASSET_STATUS_LABELS[status]}
     </span>
   );
 }

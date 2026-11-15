@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fontsource-variable/manrope": "5.3.0",
+    "@wms/contracts": "workspace:*",
     "lucide-react": "1.72.0",
     "qrcode-generator": "2.0.4",
     "react": "19.3.1",

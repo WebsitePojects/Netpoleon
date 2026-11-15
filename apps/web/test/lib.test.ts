@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { code128 } from '../src/lib/barcode.js';
-import { passwordProblem } from '../src/lib/passwords.js';
+import { passwordProblem } from '@wms/contracts';
 import { randomToken, sha256Hex } from '../src/lib/sha256.js';
 
 describe('sha256Hex', () => {

@@ -8,13 +8,23 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **Importing one helper from a package's main entry pulled zod into the browser bundle.** The
+  web app used `passwordProblem` and `can` from `@wms/contracts`, whose index also builds every
+  zod schema at load, and the bundle grew by about 120 kB. The package now has a zod-free
+  `./client` entry for runtime values; screens import types from the main entry with
+  `import type`. Compare `vite build` sizes before and after adding a workspace import.
+- **The demo store had drifted from the database lifecycle.** The demo put a repaired unit
+  straight back on a shelf and refused to retire one under inspection; `asset_transitions`
+  sends a repaired unit back to inspection and allows that retirement. When two
+  implementations sit behind one interface, check the rules against the database's own table,
+  not against the older implementation.
 - **Drizzle drops the table name from columns in a one-table select, which silently breaks a
-  correlated subquery.** `sql\`(SELECT … FROM model_accessories WHERE product_model_id =
-  ${productModels.id})\`` rendered `= "id"`, which bound to `model_accessories.id`: every model
-  showed no accessories, and the partners list would have counted each company's contacts and
-  loans wrong. Render the query with `.toSQL()` when in doubt; in subqueries name the outer
-  column literally (`product_models.id`). A test that puts data on one company and checks a
-  second one stays empty is what catches it.
+  correlated subquery.** A subquery written in a `sql` template as
+  `WHERE product_model_id = ${productModels.id}` rendered `= "id"`, which bound to
+  `model_accessories.id`: every model showed no accessories, and the partners list would have
+  counted each company's contacts and loans wrong. Render the query with `.toSQL()` when in
+  doubt; in subqueries name the outer column literally (`product_models.id`). A test that puts
+  data on one company and checks a second one stays empty is what catches it.
 - **`= ANY(${array})` in a Drizzle `sql` template becomes `= ANY(($1, $2))`, a row, not an
   array.** Use `inArray(column, values)`.
 - **Tests and development data must not share a PostgreSQL cluster.** Roles are cluster-wide,

@@ -1,7 +1,13 @@
 import type { Role } from './types.js';
 
-/** Every guarded action in the console. An action missing from a role's list is denied. */
-export type Action =
+import { can as canFor, type Action as AnyAction } from '@wms/contracts/client';
+
+/**
+ * The permission table itself lives in `@wms/contracts`, shared with the API, so the screen
+ * and the server can never disagree about who may do what. This file keeps the labels.
+ */
+export type Action = Extract<
+  AnyAction,
   | 'unit.register'
   | 'unit.edit'
   | 'unit.move'
@@ -17,7 +23,8 @@ export type Action =
   | 'reports.export'
   | 'users.manage'
   | 'partners.manage'
-  | 'settings.manage';
+  | 'settings.manage'
+>;
 
 export const ACTION_LABELS: Record<Action, string> = {
   'unit.register': 'Register units',
@@ -38,6 +45,13 @@ export const ACTION_LABELS: Record<Action, string> = {
   'settings.manage': 'Change settings',
 };
 
+/** Label for any account role, partner roles included (they appear on the portal). */
+export function roleLabel(role: Role | 'partner_admin' | 'partner_member'): string {
+  if (role === 'partner_admin') return 'Partner administrator';
+  if (role === 'partner_member') return 'Partner member';
+  return ROLE_LABELS[role];
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administrator',
   manager: 'Manager',
@@ -52,33 +66,6 @@ export const ROLE_SUMMARIES: Record<Role, string> = {
   auditor: 'Reads everything, changes nothing',
 };
 
-const WAREHOUSE_ACTIONS: Action[] = [
-  'unit.register',
-  'unit.edit',
-  'unit.move',
-  'unit.repair',
-  'loan.request',
-  'loan.release',
-  'loan.receive',
-  'inspection.perform',
-  'reports.export',
-];
-
-const MANAGER_ACTIONS: Action[] = [
-  'loan.request',
-  'loan.decide',
-  'loan.extend',
-  'loan.cancel',
-  'reports.export',
-];
-
-const GRANTS: Record<Role, ReadonlySet<Action>> = {
-  admin: new Set(Object.keys(ACTION_LABELS) as Action[]),
-  manager: new Set(MANAGER_ACTIONS),
-  warehouse: new Set(WAREHOUSE_ACTIONS),
-  auditor: new Set<Action>(['reports.export']),
-};
-
 export function can(role: Role, action: Action): boolean {
-  return GRANTS[role].has(action);
+  return canFor(role, action);
 }
