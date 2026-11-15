@@ -8,6 +8,14 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **React Router 7 applies `setSearchParams` inside a transition, so the URL changes before the
+  new screen paints.** Two e2e checks read the old table: one waited for `?sort=-code` then read
+  still-ascending rows, the other clicked a tab and then "Export CSV" on the previous tab's
+  table. Wait for rendered state instead (`th[aria-sort="descending"]`,
+  `.tab[aria-selected="true"]`, the new heading), never for the URL alone.
+- **A phone table label is a `::before` on the cell, so it inherits the cell's class.** Codes set
+  in `mono` printed their label ("Serial Number") in monospace too. The label now sets its own
+  font in `app.css`.
 - **A red format step hides every bug behind it.** CI stops at the first failing step, so the
   web branch's format failure kept typecheck from ever running, and a real crash went unseen:
   bulk "Reject requests" on Borrow / Return called `store`, `user` and `toast` that `Borrow()`

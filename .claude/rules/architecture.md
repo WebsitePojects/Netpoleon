@@ -12,9 +12,23 @@ A pnpm workspace. One deployable image runs as different commands (api, migrate,
 | `packages/contracts` | Request/response schemas shared with the future frontend | nothing internal |
 | `packages/db` | SQL migrations, typed tables, the `Database` class | `config` |
 | `apps/api` | HTTP: routes, services, repositories | all three packages |
+| `apps/web` | The staff console (React + Vite). Slice 1 runs on demo data in `src/data/store.ts` | nothing internal yet |
 | `infra/docker` | Dockerfile, compose files, proxy config | — |
 
 Imports go down that table only. A package never imports from `apps/`.
+
+## Inside the web app
+- Pages live in `apps/web/src/pages/`; shared pieces in `src/components/`.
+- **Every list is a `DataTable`** (`src/components/DataTable.tsx`): search, filter dropdowns,
+  sortable headers, row selection with batch actions, CSV export (gated by `reports.export`),
+  paging, a loading placeholder with the real column widths, stacked rows on phones. A new
+  table passes columns, filters and batch actions; it never builds its own `<table>`. Pass
+  `syncUrl` only when the table is the only one on its screen, since the state keys (`q`,
+  `page`, `sort`, filter ids) live in the address.
+- Batch actions call the store once per row through `runBatch`, which skips rows the store
+  refuses and reports the count, so a mixed selection never half-fails silently.
+- Tab strips use `Tabs` (`src/components/ui.tsx`); the highlight is one element moved by the
+  spring in `useLiquidInk` (`src/lib/hooks.ts`).
 
 ## Inside the API: three layers, one direction
 `routes → services → repositories → Database`. A layer never reaches past the one below it.

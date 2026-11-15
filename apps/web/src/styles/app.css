@@ -1029,6 +1029,10 @@ tr.is-late td:first-child {
   }
   .table td::before {
     content: attr(data-label);
+    /* The label is page text even when the value is a code set in monospace. */
+    font-family: 'Manrope Variable', system-ui, 'Segoe UI', sans-serif;
+    font-weight: 500;
+    letter-spacing: normal;
     color: var(--muted);
     font-size: var(--t-small);
     text-align: left;

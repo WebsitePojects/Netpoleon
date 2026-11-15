@@ -16,11 +16,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { Select, SkPage } from '../components/controls.js';
+import { DataTable } from '../components/DataTable.js';
 import { ActionDialog } from '../components/dialogs.js';
 import { QrCode } from '../components/QrCode.js';
 import { Button, Field, FormError, PageHead, Switch, useToast } from '../components/ui.js';
 import { useStore, useWmsState } from '../data/context.js';
-import type { Settings as SettingsData } from '../data/types.js';
+import type { Category, Settings as SettingsData, StorageLocation } from '../data/types.js';
 import { usePageReady, useSubmit } from '../lib/hooks.js';
 
 type SectionId =
@@ -337,37 +338,50 @@ function CategoriesSection({ editable }: { editable: boolean }) {
   const [adding, setAdding] = useState(false);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const unitsIn = (category: Category) =>
+    state.units.filter((unit) => unit.categoryCode === category.code).length;
 
   return (
     <>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Code</th>
-            <th>Asset code format</th>
-            <th className="right">Units</th>
-          </tr>
-        </thead>
-        <tbody>
-          {state.categories.map((category) => (
-            <tr key={category.code}>
-              <td data-label="Category">
-                <span className="cell-main">{category.name}</span>
-              </td>
-              <td data-label="Code" className="mono">
-                {category.code}
-              </td>
-              <td data-label="Asset code format" className="mono">
-                NTP-{category.code}-00001
-              </td>
-              <td data-label="Units" className="right num">
-                {state.units.filter((unit) => unit.categoryCode === category.code).length}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        rows={state.categories}
+        columns={[
+          {
+            id: 'name',
+            header: 'Category',
+            width: '1.4fr',
+            sort: (category) => category.name,
+            cell: (category) => <span className="cell-main">{category.name}</span>,
+          },
+          {
+            id: 'code',
+            header: 'Code',
+            className: 'mono',
+            sort: (category) => category.code,
+            cell: (category) => category.code,
+          },
+          {
+            id: 'format',
+            header: 'Asset code format',
+            className: 'mono',
+            cell: (category) => `NTP-${category.code}-00001`,
+          },
+          {
+            id: 'units',
+            header: 'Units',
+            align: 'right',
+            className: 'num',
+            sort: unitsIn,
+            cell: unitsIn,
+          },
+        ]}
+        rowKey={(category) => category.code}
+        noun="categories"
+        search={{
+          placeholder: 'Search by name or code…',
+          text: (category) => `${category.name} ${category.code}`,
+        }}
+      />
       {editable && (
         <div className="save-bar">
           <span>A category with units cannot be removed.</span>
@@ -420,37 +434,62 @@ function LocationsSection({ editable }: { editable: boolean }) {
   const [name, setName] = useState('');
   const [zone, setZone] = useState('');
   const KIND_LABELS = { shelf: 'Shelf', area: 'Work area', site: 'Outside' } as const;
+  const unitsAt = (location: StorageLocation) =>
+    state.units.filter((unit) => unit.locationId === location.id && unit.status !== 'retired')
+      .length;
 
   return (
     <>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Location</th>
-            <th>Zone</th>
-            <th>Type</th>
-            <th className="right">Units here</th>
-          </tr>
-        </thead>
-        <tbody>
-          {state.locations.map((location) => (
-            <tr key={location.id}>
-              <td data-label="Location">
-                <span className="cell-main">{location.name}</span>
-              </td>
-              <td data-label="Zone">{location.zone}</td>
-              <td data-label="Type">{KIND_LABELS[location.kind]}</td>
-              <td data-label="Units here" className="right num">
-                {
-                  state.units.filter(
-                    (unit) => unit.locationId === location.id && unit.status !== 'retired',
-                  ).length
-                }
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        rows={state.locations}
+        columns={[
+          {
+            id: 'name',
+            header: 'Location',
+            width: '1.4fr',
+            sort: (location) => location.name,
+            cell: (location) => <span className="cell-main">{location.name}</span>,
+          },
+          {
+            id: 'zone',
+            header: 'Zone',
+            sort: (location) => location.zone,
+            cell: (location) => location.zone,
+          },
+          {
+            id: 'kind',
+            header: 'Type',
+            sort: (location) => KIND_LABELS[location.kind],
+            cell: (location) => KIND_LABELS[location.kind],
+          },
+          {
+            id: 'units',
+            header: 'Units here',
+            align: 'right',
+            className: 'num',
+            sort: unitsAt,
+            cell: unitsAt,
+          },
+        ]}
+        rowKey={(location) => location.id}
+        noun="locations"
+        search={{
+          placeholder: 'Search by name or zone…',
+          text: (location) => `${location.name} ${location.zone}`,
+        }}
+        filters={[
+          {
+            id: 'kind',
+            label: 'Type',
+            allLabel: 'All types',
+            options: (Object.keys(KIND_LABELS) as StorageLocation['kind'][]).map((kind) => ({
+              value: kind,
+              label: KIND_LABELS[kind],
+            })),
+            test: (location, value) => location.kind === value,
+          },
+        ]}
+      />
       {editable && (
         <div className="save-bar">
           <span>Work areas and the client site are built in.</span>

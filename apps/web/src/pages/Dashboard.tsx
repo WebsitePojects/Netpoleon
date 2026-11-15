@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth.js';
 import { Donut } from '../components/charts.js';
 import { Sk, SkTable } from '../components/controls.js';
+import { DataTable } from '../components/DataTable.js';
 import { Empty, LoanChip, PageHead, order } from '../components/ui.js';
 import { useWmsState } from '../data/context.js';
 import {
@@ -226,8 +227,7 @@ export function Dashboard() {
         .filter(
           (loan) => loan.status === 'released' && daysBetween(today, loan.dueDate) <= DUE_SOON_DAYS,
         )
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .slice(0, 6),
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
     [state.loans, today],
   );
 
@@ -386,50 +386,74 @@ export function Dashboard() {
               <h2 id="due-title">Returns Due Within {DUE_SOON_DAYS} Days</h2>
               <Link to="/borrow?tab=on_demo">All loans</Link>
             </div>
-            {dueSoon.length === 0 ? (
-              <Empty title="Nothing is due this week">
-                Every unit on demo has more than a week left.
-              </Empty>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Transaction</th>
-                    <th>Borrower</th>
-                    <th>Unit</th>
-                    <th>Due</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dueSoon.map((loan) => {
+            <DataTable
+              rows={dueSoon}
+              columns={[
+                {
+                  id: 'number',
+                  header: 'Transaction',
+                  sort: (loan) => loan.number,
+                  cell: (loan) => (
+                    <Link to={`/borrow/${loan.number}`} className="row-link mono">
+                      {loan.number}
+                    </Link>
+                  ),
+                },
+                {
+                  id: 'company',
+                  header: 'Borrower',
+                  width: '1.4fr',
+                  sort: (loan) => loan.borrower.company,
+                  cell: (loan) => <span className="cell-main">{loan.borrower.company}</span>,
+                },
+                {
+                  id: 'unit',
+                  header: 'Unit',
+                  className: 'mono',
+                  sort: (loan) => loan.unitCode ?? '',
+                  cell: (loan) => loan.unitCode,
+                },
+                {
+                  id: 'due',
+                  header: 'Due',
+                  className: 'num',
+                  sort: (loan) => loan.dueDate,
+                  cell: (loan) => {
                     const late = daysOverdue(loan, today);
                     return (
-                      <tr key={loan.number} className={late > 0 ? 'is-late' : undefined}>
-                        <td data-label="Transaction">
-                          <Link to={`/borrow/${loan.number}`} className="row-link mono">
-                            {loan.number}
-                          </Link>
-                        </td>
-                        <td data-label="Borrower">
-                          <span className="cell-main">{loan.borrower.company}</span>
-                        </td>
-                        <td data-label="Unit" className="mono">
-                          {loan.unitCode}
-                        </td>
-                        <td data-label="Due" className="num">
-                          {formatDate(loan.dueDate)}
-                          {late > 0 && <span className="late"> · {late}d late</span>}
-                        </td>
-                        <td data-label="Status">
-                          <LoanChip status={loan.status} />
-                        </td>
-                      </tr>
+                      <>
+                        {formatDate(loan.dueDate)}
+                        {late > 0 && <span className="late"> · {late}d late</span>}
+                      </>
                     );
-                  })}
-                </tbody>
-              </table>
-            )}
+                  },
+                },
+                {
+                  id: 'state',
+                  header: 'Status',
+                  cell: (loan) => <LoanChip status={loan.status} />,
+                },
+              ]}
+              rowKey={(loan) => loan.number}
+              noun="loans"
+              pageSize={6}
+              rowClass={(loan) => (daysOverdue(loan, today) > 0 ? 'is-late' : undefined)}
+              empty={{
+                title: 'Nothing is due this week',
+                body: 'Every unit on demo has more than a week left.',
+              }}
+              exportCsv={{
+                name: 'returns-due',
+                header: ['Transaction', 'Company', 'Asset code', 'Due', 'Days late'],
+                row: (loan) => [
+                  loan.number,
+                  loan.borrower.company,
+                  loan.unitCode ?? '',
+                  loan.dueDate,
+                  daysOverdue(loan, today),
+                ],
+              }}
+            />
           </section>
         </div>
       )}

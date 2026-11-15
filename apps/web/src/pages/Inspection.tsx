@@ -2,12 +2,12 @@ import { ClipboardCheck, PackageCheck, SearchCheck, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
-import { CONDITION_OPTIONS, Select, SkTable } from '../components/controls.js';
+import { CONDITION_OPTIONS, Select } from '../components/controls.js';
+import { DataTable, runBatch, type Column } from '../components/DataTable.js';
 import { ActionDialog, ShelfDialog, ShelfSelect } from '../components/dialogs.js';
 import {
   Button,
   CategoryThumb,
-  Empty,
   Field,
   PageHead,
   StatusChip,
@@ -94,6 +94,114 @@ export function Inspection() {
     return byUnit;
   }, [state.movements]);
 
+  const missingLabel = (unit: Unit) => {
+    const loan = openReturn.get(unit.code);
+    const missing = loan ? missingAccessories(loan) : [];
+    return missing.length > 0 ? `Missing ${missing.join(', ').toLowerCase()}` : 'Complete';
+  };
+  const repairTab = tab === 'repair';
+
+  const columns: Column<Unit>[] = [
+    {
+      id: 'code',
+      header: 'Unit',
+      width: '1.3fr',
+      skeleton: 'thumb',
+      sort: (unit) => unit.code,
+      cell: (unit) => (
+        <span className="unit-cell">
+          <CategoryThumb unit={unit} />
+          <Link to={`/units/${unit.code}`} className="row-link mono">
+            {unit.code}
+          </Link>
+        </span>
+      ),
+    },
+    {
+      id: 'model',
+      header: 'Brand / Model',
+      width: '1.5fr',
+      skeleton: 150,
+      sort: (unit) => `${unit.brand} ${unit.model}`,
+      cell: (unit) => `${unit.brand} ${unit.model}`,
+    },
+    repairTab
+      ? {
+          id: 'fault',
+          header: 'Fault',
+          skeleton: 140,
+          sort: (unit) => lastNote.get(unit.code) ?? '',
+          cell: (unit) => lastNote.get(unit.code) ?? '—',
+        }
+      : {
+          id: 'company',
+          header: 'Returned by',
+          skeleton: 130,
+          sort: (unit) => openReturn.get(unit.code)?.borrower.company ?? '',
+          cell: (unit) => openReturn.get(unit.code)?.borrower.company ?? '—',
+        },
+    repairTab
+      ? {
+          id: 'state',
+          header: 'Status',
+          skeleton: 'chip',
+          cell: (unit) => <StatusChip status={unit.status} />,
+        }
+      : {
+          id: 'returned',
+          header: 'Returned',
+          skeleton: 100,
+          className: 'num',
+          sort: (unit) => openReturn.get(unit.code)?.returnedAt ?? '',
+          cell: (unit) => formatDate(openReturn.get(unit.code)?.returnedAt ?? null),
+        },
+    {
+      id: 'accessories',
+      header: 'Accessories',
+      width: '1.1fr',
+      skeleton: 120,
+      sort: missingLabel,
+      cell: (unit) => {
+        const label = missingLabel(unit);
+        return label === 'Complete' ? label : <span className="late">{label}</span>;
+      },
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      label: '',
+      align: 'right',
+      skeleton: 120,
+      cell: (unit) => (
+        <>
+          {mayInspect && tab === 'awaiting' && (
+            <StartButton
+              onStart={() => {
+                store.startInspection(user.username, unit.code);
+                toast(`${unit.code} moved to the QA Area`);
+              }}
+            />
+          )}
+          {mayInspect && tab === 'inspecting' && (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={ClipboardCheck}
+              onClick={() => setInspecting(unit)}
+            >
+              Record result
+            </Button>
+          )}
+          {can('unit.repair') && repairTab && (
+            <Button size="sm" variant="primary" icon={Wrench} onClick={() => setRepaired(unit)}>
+              Repair complete
+            </Button>
+          )}
+        </>
+      ),
+    },
+  ];
+
   return (
     <div className="page">
       <PageHead
@@ -110,102 +218,79 @@ export function Inspection() {
         />
 
         <div className="card table-card">
-          {!ready ? (
-            <SkTable
-              template="1.3fr 1.5fr 1fr 1fr 1.1fr"
-              cells={['thumb', 150, 'chip', 100, 120]}
-              rows={6}
-            />
-          ) : units.length === 0 ? (
-            <Empty title="This queue is empty" icon={ClipboardCheck}>
-              {tab === 'awaiting'
-                ? 'Returned units appear here as soon as they are received.'
-                : 'Nothing is waiting at this step.'}
-            </Empty>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Unit</th>
-                  <th>Brand / Model</th>
-                  <th>{tab === 'repair' ? 'Fault' : 'Returned by'}</th>
-                  <th>{tab === 'repair' ? 'Status' : 'Returned'}</th>
-                  <th>Accessories</th>
-                  <th className="right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {units.map((unit) => {
-                  const loan = openReturn.get(unit.code);
-                  const missing = loan ? missingAccessories(loan) : [];
-                  return (
-                    <tr key={unit.code}>
-                      <td data-label="Unit">
-                        <span className="unit-cell">
-                          <CategoryThumb unit={unit} />
-                          <Link to={`/units/${unit.code}`} className="row-link mono">
-                            {unit.code}
-                          </Link>
-                        </span>
-                      </td>
-                      <td data-label="Brand / Model">
-                        {unit.brand} {unit.model}
-                      </td>
-                      <td data-label={tab === 'repair' ? 'Fault' : 'Returned by'}>
-                        {tab === 'repair'
-                          ? (lastNote.get(unit.code) ?? '—')
-                          : (loan?.borrower.company ?? '—')}
-                      </td>
-                      <td data-label={tab === 'repair' ? 'Status' : 'Returned'} className="num">
-                        {tab === 'repair' ? (
-                          <StatusChip status={unit.status} />
-                        ) : (
-                          formatDate(loan?.returnedAt ?? null)
-                        )}
-                      </td>
-                      <td data-label="Accessories">
-                        {missing.length > 0 ? (
-                          <span className="late">Missing {missing.join(', ').toLowerCase()}</span>
-                        ) : (
-                          'Complete'
-                        )}
-                      </td>
-                      <td data-label="" className="right">
-                        {mayInspect && tab === 'awaiting' && (
-                          <StartButton
-                            onStart={() => {
-                              store.startInspection(user.username, unit.code);
-                              toast(`${unit.code} moved to the QA Area`);
-                            }}
-                          />
-                        )}
-                        {mayInspect && tab === 'inspecting' && (
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            icon={ClipboardCheck}
-                            onClick={() => setInspecting(unit)}
-                          >
-                            Record result
-                          </Button>
-                        )}
-                        {can('unit.repair') && tab === 'repair' && (
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            icon={Wrench}
-                            onClick={() => setRepaired(unit)}
-                          >
-                            Repair complete
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+          {/* Keyed by queue: a selection made in one queue does not carry into another. */}
+          <DataTable
+            key={tab}
+            rows={units}
+            columns={columns}
+            rowKey={(unit) => unit.code}
+            noun="units"
+            loading={!ready}
+            syncUrl
+            search={{
+              placeholder: 'Search by asset code, model, or company…',
+              text: (unit) =>
+                `${unit.code} ${unit.brand} ${unit.model} ${openReturn.get(unit.code)?.borrower.company ?? ''}`,
+            }}
+            filters={[
+              {
+                id: 'category',
+                label: 'Category',
+                allLabel: 'All categories',
+                options: state.categories.map((item) => ({ value: item.code, label: item.name })),
+                test: (unit, value) => unit.categoryCode === value,
+              },
+            ]}
+            empty={{
+              title: 'This queue is empty',
+              icon: ClipboardCheck,
+              body:
+                tab === 'awaiting'
+                  ? 'Returned units appear here as soon as they are received.'
+                  : 'Nothing is waiting at this step.',
+            }}
+            batchActions={
+              mayInspect && tab === 'awaiting'
+                ? [
+                    {
+                      label: 'Inspect selected',
+                      icon: SearchCheck,
+                      run: (picked, clear) => {
+                        const result = runBatch(picked, (unit) =>
+                          store.startInspection(user.username, unit.code),
+                        );
+                        clear();
+                        if (result.done === 0) {
+                          toast(result.refused, 'error');
+                          return;
+                        }
+                        const skipped = picked.length - result.done;
+                        toast(
+                          skipped === 0
+                            ? `${result.done} moved to the QA Area`
+                            : `${result.done} moved to the QA Area, ${skipped} skipped`,
+                        );
+                      },
+                    },
+                  ]
+                : []
+            }
+            exportCsv={{
+              name: `inspection-${tab}`,
+              header: ['Asset code', 'Brand', 'Model', 'Returned by', 'Returned', 'Accessories'],
+              row: (unit) => {
+                const loan = openReturn.get(unit.code);
+                return [
+                  unit.code,
+                  unit.brand,
+                  unit.model,
+                  loan?.borrower.company ?? '',
+                  loan?.returnedAt ?? '',
+                  missingLabel(unit),
+                ];
+              },
+            }}
+          />
         </div>
       </div>
 

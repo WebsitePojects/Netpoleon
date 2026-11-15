@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { usePageReady } from '../lib/hooks.js';
 import { SkPage } from '../components/controls.js';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { DataTable } from '../components/DataTable.js';
 import { ActionDialog, ReasonDialog, ShelfDialog } from '../components/dialogs.js';
 import { QrCode } from '../components/QrCode.js';
 import {
@@ -161,30 +162,42 @@ export function UnitDetail() {
                 <h2 id="history-title">Movement history</h2>
                 <span className="muted num">{history.length} entries</span>
               </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Movement</th>
-                    <th>Status after</th>
-                    <th>By</th>
-                    <th>Remarks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((movement) => (
-                    <tr key={movement.id}>
-                      <td data-label="Date" className="num">
-                        {formatDateTime(movement.at)}
-                      </td>
-                      <td data-label="Movement">
-                        <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>
-                      </td>
-                      <td data-label="Status after">
-                        <StatusChip status={movement.toStatus} />
-                      </td>
-                      <td data-label="By">{userName.get(movement.by) ?? movement.by}</td>
-                      <td data-label="Remarks">
+              <DataTable
+                rows={history}
+                columns={[
+                  {
+                    id: 'date',
+                    header: 'Date',
+                    className: 'num',
+                    sort: (movement) => movement.at,
+                    cell: (movement) => formatDateTime(movement.at),
+                  },
+                  {
+                    id: 'type',
+                    header: 'Movement',
+                    sort: (movement) => MOVEMENT_LABELS[movement.type],
+                    cell: (movement) => (
+                      <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>
+                    ),
+                  },
+                  {
+                    id: 'state',
+                    header: 'Status after',
+                    sort: (movement) => STATUS_LABELS[movement.toStatus],
+                    cell: (movement) => <StatusChip status={movement.toStatus} />,
+                  },
+                  {
+                    id: 'by',
+                    header: 'By',
+                    sort: (movement) => userName.get(movement.by) ?? movement.by,
+                    cell: (movement) => userName.get(movement.by) ?? movement.by,
+                  },
+                  {
+                    id: 'note',
+                    header: 'Remarks',
+                    width: '1.6fr',
+                    cell: (movement) => (
+                      <>
                         {movement.note}
                         {movement.loanNumber && (
                           <>
@@ -194,11 +207,43 @@ export function UnitDetail() {
                             </Link>
                           </>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </>
+                    ),
+                  },
+                ]}
+                rowKey={(movement) => String(movement.id)}
+                noun="movements"
+                pageSize={8}
+                search={{
+                  placeholder: 'Search remarks or transaction…',
+                  text: (movement) =>
+                    `${MOVEMENT_LABELS[movement.type]} ${movement.note} ${movement.loanNumber ?? ''}`,
+                }}
+                filters={[
+                  {
+                    id: 'type',
+                    label: 'Movement',
+                    allLabel: 'All movements',
+                    options: [...new Set(history.map((movement) => movement.type))].map((type) => ({
+                      value: type,
+                      label: MOVEMENT_LABELS[type],
+                    })),
+                    test: (movement, value) => movement.type === value,
+                  },
+                ]}
+                exportCsv={{
+                  name: `history-${unit.code}`,
+                  header: ['Date', 'Movement', 'Status after', 'By', 'Remarks', 'Transaction'],
+                  row: (movement) => [
+                    movement.at,
+                    MOVEMENT_LABELS[movement.type],
+                    STATUS_LABELS[movement.toStatus],
+                    userName.get(movement.by) ?? movement.by,
+                    movement.note,
+                    movement.loanNumber ?? '',
+                  ],
+                }}
+              />
             </section>
           </div>
 

@@ -75,6 +75,8 @@ Legend: **S1** built in slice 1 · S2, S3 later.
 - [x] Loaders, page transitions, micro-interactions, reduced-motion support
 - [x] Store unit tests for the lifecycle and its guards
 - [x] Browser end-to-end run of the full lifecycle (`apps/web/e2e/lifecycle.mjs`)
+- [x] Every table on one `DataTable`: search, filters, sort, row selection, batch actions, CSV export
+- [x] Tab strips with a travelling spring highlight
 
 ## Demo accounts (demo data only, no real system behind them)
 

@@ -1,18 +1,17 @@
-import { Check, Pencil, Search, UserPlus } from 'lucide-react';
+import { Check, Pencil, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { Select, SkPage } from '../components/controls.js';
 import { usePageReady } from '../lib/hooks.js';
+import { DataTable, runBatch, type Column } from '../components/DataTable.js';
 import { ActionDialog } from '../components/dialogs.js';
 import {
   Avatar,
   Button,
-  Empty,
   Field,
   PageHead,
   Switch,
-  TableFoot,
   Tabs,
   useToast,
   type TabItem,
@@ -26,7 +25,7 @@ import {
   type Action,
 } from '../data/permissions.js';
 import { WmsError } from '../data/store.js';
-import type { Role, User } from '../data/types.js';
+import type { AuditEntry, Role, User } from '../data/types.js';
 import { formatDateTime, formatRelative } from '../lib/dates.js';
 
 type TabId = 'users' | 'roles' | 'activity';
@@ -107,61 +106,159 @@ function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
     }
   };
 
+  /** Sets the selected accounts on or off, skipping those already there. */
+  const setActive = (picked: User[], active: boolean, clear: () => void) => {
+    const result = runBatch(
+      picked.filter((user) => user.active !== active),
+      (user) => store.setUserActive(me.username, user.username, active),
+    );
+    clear();
+    if (result.refused) toast(result.refused, 'error');
+    if (result.done > 0)
+      toast(
+        `${result.done} user${result.done === 1 ? '' : 's'} ${active ? 'reactivated' : 'deactivated'}`,
+      );
+  };
+
+  const columns: Column<User>[] = [
+    {
+      id: 'name',
+      header: 'User',
+      width: '1.6fr',
+      skeleton: 'thumb',
+      sort: (user) => user.name,
+      cell: (user) => (
+        <span className="unit-cell">
+          <Avatar name={user.name} />
+          <span>
+            <span className="cell-main">{user.name}</span>
+            <span className="cell-sub" style={{ display: 'block' }}>
+              {user.title || user.email}
+            </span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'username',
+      header: 'Username',
+      className: 'mono',
+      skeleton: 90,
+      sort: (user) => user.username,
+      cell: (user) => user.username,
+    },
+    {
+      id: 'role',
+      header: 'Role',
+      skeleton: 'chip',
+      sort: (user) => ROLE_LABELS[user.role],
+      cell: (user) => <span className="chip plain">{ROLE_LABELS[user.role]}</span>,
+    },
+    {
+      id: 'seen',
+      header: 'Last active',
+      skeleton: 90,
+      // Newest first reads naturally, so the value sorts by time, not by the label.
+      sort: (user) => user.lastActiveAt ?? '',
+      cell: (user) => (user.lastActiveAt ? formatRelative(user.lastActiveAt, now) : 'Never'),
+    },
+    {
+      id: 'active',
+      header: 'Active',
+      width: '0.7fr',
+      skeleton: 40,
+      sort: (user) => (user.active ? 0 : 1),
+      cell: (user) => (
+        <Switch
+          checked={user.active}
+          disabled={!manage}
+          label={`${user.name} can sign in`}
+          onChange={(next) => toggle(user, next)}
+        />
+      ),
+    },
+    ...(manage
+      ? [
+          {
+            id: 'edit',
+            header: 'Edit',
+            label: '',
+            align: 'right' as const,
+            width: '0.7fr',
+            skeleton: 60,
+            cell: (user: User) => (
+              <Button size="sm" icon={Pencil} onClick={() => onEdit(user)}>
+                Edit
+              </Button>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="card table-card">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>User</th>
-            <th>Username</th>
-            <th>Role</th>
-            <th>Last active</th>
-            <th>Active</th>
-            {manage && <th className="right">Edit</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.username}>
-              <td data-label="User">
-                <span className="unit-cell">
-                  <Avatar name={user.name} />
-                  <span>
-                    <span className="cell-main">{user.name}</span>
-                    <span className="cell-sub" style={{ display: 'block' }}>
-                      {user.title || user.email}
-                    </span>
-                  </span>
-                </span>
-              </td>
-              <td data-label="Username" className="mono">
-                {user.username}
-              </td>
-              <td data-label="Role">
-                <span className="chip plain">{ROLE_LABELS[user.role]}</span>
-              </td>
-              <td data-label="Last active">
-                {user.lastActiveAt ? formatRelative(user.lastActiveAt, now) : 'Never'}
-              </td>
-              <td data-label="Active">
-                <Switch
-                  checked={user.active}
-                  disabled={!manage}
-                  label={`${user.name} can sign in`}
-                  onChange={(next) => toggle(user, next)}
-                />
-              </td>
-              {manage && (
-                <td data-label="" className="right">
-                  <Button size="sm" icon={Pencil} onClick={() => onEdit(user)}>
-                    Edit
-                  </Button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        rows={users}
+        columns={columns}
+        rowKey={(user) => user.username}
+        rowLabel={(user) => user.name}
+        noun="users"
+        syncUrl
+        search={{
+          placeholder: 'Search by name, username, or email…',
+          text: (user) => `${user.name} ${user.username} ${user.email} ${user.title}`,
+        }}
+        filters={[
+          {
+            id: 'role',
+            label: 'Role',
+            allLabel: 'All roles',
+            options: ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] })),
+            test: (user, value) => user.role === value,
+          },
+          {
+            id: 'access',
+            label: 'Access',
+            allLabel: 'Active and inactive',
+            options: [
+              { value: 'active', label: 'Active only' },
+              { value: 'inactive', label: 'Inactive only' },
+            ],
+            test: (user, value) => user.active === (value === 'active'),
+          },
+        ]}
+        batchActions={
+          manage
+            ? [
+                {
+                  label: 'Reactivate',
+                  icon: UserCheck,
+                  run: (picked, clear) => setActive(picked, true, clear),
+                },
+                {
+                  label: 'Deactivate',
+                  icon: UserX,
+                  danger: true,
+                  run: (picked, clear) => setActive(picked, false, clear),
+                },
+              ]
+            : []
+        }
+        exportCsv={{
+          name: 'users',
+          header: ['Name', 'Username', 'Email', 'Job title', 'Role', 'Active', 'Last active'],
+          row: (user) => [
+            user.name,
+            user.username,
+            user.email,
+            user.title,
+            ROLE_LABELS[user.role],
+            user.active ? 'Yes' : 'No',
+            user.lastActiveAt ?? '',
+          ],
+        }}
+      />
     </div>
   );
 }
@@ -211,81 +308,94 @@ function RoleMatrix() {
 
 function ActivityLog() {
   const { audit, users } = useWmsState();
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
   const nameOf = useMemo(() => new Map(users.map((user) => [user.username, user.name])), [users]);
+  const rows = useMemo(() => [...audit].reverse(), [audit]);
 
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const newestFirst = [...audit].reverse();
-    if (!needle) return newestFirst;
-    return newestFirst.filter((entry) =>
-      `${entry.actor} ${nameOf.get(entry.actor) ?? ''} ${entry.action} ${entry.target} ${entry.detail}`
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [audit, query, nameOf]);
-
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount);
-  const visible = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const columns: Column<AuditEntry>[] = [
+    {
+      id: 'when',
+      header: 'When',
+      className: 'num',
+      skeleton: 120,
+      sort: (entry) => entry.at,
+      cell: (entry) => formatDateTime(entry.at),
+    },
+    {
+      id: 'who',
+      header: 'Who',
+      skeleton: 110,
+      sort: (entry) => nameOf.get(entry.actor) ?? entry.actor,
+      cell: (entry) => nameOf.get(entry.actor) ?? entry.actor,
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      className: 'mono',
+      skeleton: 120,
+      sort: (entry) => entry.action,
+      cell: (entry) => entry.action,
+    },
+    {
+      id: 'record',
+      header: 'Record',
+      className: 'mono',
+      skeleton: 110,
+      sort: (entry) => entry.target,
+      cell: (entry) => entry.target,
+    },
+    {
+      id: 'detail',
+      header: 'Detail',
+      width: '1.6fr',
+      skeleton: 180,
+      cell: (entry) => entry.detail || '—',
+    },
+  ];
 
   return (
     <div className="card table-card">
-      <div className="toolbar">
-        <label className="input-wrap">
-          <span className="sr-only">Search the activity log</span>
-          <Search aria-hidden="true" />
-          <input
-            className="input"
-            type="search"
-            placeholder="Search by person, action, or asset code…"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-          />
-        </label>
-      </div>
-      {visible.length === 0 ? (
-        <Empty title="No activity matches">Try a shorter search.</Empty>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Who</th>
-              <th>Action</th>
-              <th>Record</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((entry) => (
-              <tr key={entry.id}>
-                <td data-label="When" className="num">
-                  {formatDateTime(entry.at)}
-                </td>
-                <td data-label="Who">{nameOf.get(entry.actor) ?? entry.actor}</td>
-                <td data-label="Action" className="mono">
-                  {entry.action}
-                </td>
-                <td data-label="Record" className="mono">
-                  {entry.target}
-                </td>
-                <td data-label="Detail">{entry.detail || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <TableFoot
-        page={current}
-        pageSize={PAGE_SIZE}
-        total={rows.length}
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(entry) => String(entry.id)}
         noun="entries"
-        onPage={setPage}
+        pageSize={PAGE_SIZE}
+        syncUrl
+        search={{
+          placeholder: 'Search by person, action, or asset code…',
+          text: (entry) =>
+            `${entry.actor} ${nameOf.get(entry.actor) ?? ''} ${entry.action} ${entry.target} ${entry.detail}`,
+        }}
+        filters={[
+          {
+            id: 'who',
+            label: 'Person',
+            allLabel: 'Everyone',
+            options: users.map((user) => ({ value: user.username, label: user.name })),
+            test: (entry, value) => entry.actor === value,
+          },
+          {
+            id: 'kind',
+            label: 'Record type',
+            allLabel: 'All records',
+            options: [...new Set(audit.map((entry) => entry.action.split('.')[0] ?? ''))]
+              .filter(Boolean)
+              .sort()
+              .map((kind) => ({ value: kind, label: kind[0]?.toUpperCase() + kind.slice(1) })),
+            test: (entry, value) => entry.action.startsWith(`${value}.`),
+          },
+        ]}
+        exportCsv={{
+          name: 'activity-log',
+          header: ['When', 'Who', 'Action', 'Record', 'Detail'],
+          row: (entry) => [
+            entry.at,
+            nameOf.get(entry.actor) ?? entry.actor,
+            entry.action,
+            entry.target,
+            entry.detail,
+          ],
+        }}
       />
     </div>
   );

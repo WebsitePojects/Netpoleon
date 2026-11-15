@@ -1,18 +1,11 @@
-import { Boxes, CircleCheck, Download, RotateCcw, Search, Send } from 'lucide-react';
+import { Boxes, CircleCheck, RotateCcw, Search, Send } from 'lucide-react';
 import { useMemo, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SkPage } from '../components/controls.js';
+import { DataTable, type Column } from '../components/DataTable.js';
 import { useAuth } from '../auth/auth.js';
 import { Donut, GroupedBars, HBars, type BarSeries } from '../components/charts.js';
-import {
-  Button,
-  Empty,
-  PageHead,
-  StatusChip,
-  TableFoot,
-  Tabs,
-  type TabItem,
-} from '../components/ui.js';
+import { PageHead, StatusChip, Tabs, type TabItem } from '../components/ui.js';
 import { useWmsState } from '../data/context.js';
 import {
   ACTIVE_STATUSES,
@@ -21,8 +14,7 @@ import {
   movementsByMonth,
   STATUS_LABELS,
 } from '../data/selectors.js';
-import type { Movement, WmsState } from '../data/types.js';
-import { downloadCsv } from '../lib/csv.js';
+import type { Movement, Unit, WmsState } from '../data/types.js';
 import { daysBetween, formatDate, formatMonth, toDateKey } from '../lib/dates.js';
 import { usePageReady, useCountUp } from '../lib/hooks.js';
 
@@ -45,6 +37,7 @@ const MOVEMENT_SERIES: BarSeries[] = [
 
 const REPORT_MONTHS = 7;
 const PAGE_SIZE = 12;
+const IDLE_PAGE_SIZE = 8;
 
 /** Movement types the tracking record lists; shelf moves and reservations are left out. */
 const TRACKED: Movement['type'][] = [
@@ -87,19 +80,10 @@ function Figure({
 export function Reports() {
   const ready = usePageReady();
   const state = useWmsState();
-  const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'overview';
-  const page = Math.max(1, Number(params.get('page')) || 1);
   const now = useMemo(() => new Date(), []);
-
-  const setPage = (next: number) => {
-    const updated = new URLSearchParams(params);
-    if (next === 1) updated.delete('page');
-    else updated.set('page', String(next));
-    setParams(updated, { replace: true });
-  };
 
   return (
     <div className="page">
@@ -118,17 +102,8 @@ export function Reports() {
             label="Reports"
           />
           {tab === 'overview' && <Overview state={state} now={now} />}
-          {tab === 'tracking' && (
-            <Tracking
-              state={state}
-              page={page}
-              onPage={setPage}
-              canExport={can('reports.export')}
-            />
-          )}
-          {tab === 'borrowers' && (
-            <Borrowers state={state} now={now} canExport={can('reports.export')} />
-          )}
+          {tab === 'tracking' && <Tracking state={state} />}
+          {tab === 'borrowers' && <Borrowers state={state} now={now} />}
           {tab === 'aging' && <Aging state={state} now={now} />}
           {tab === 'utilization' && <Utilization state={state} />}
         </div>
@@ -211,17 +186,7 @@ function Overview({ state, now }: { state: WmsState; now: Date }) {
   );
 }
 
-function Tracking({
-  state,
-  page,
-  onPage,
-  canExport,
-}: {
-  state: WmsState;
-  page: number;
-  onPage: (page: number) => void;
-  canExport: boolean;
-}) {
+function Tracking({ state }: { state: WmsState }) {
   const loanByNumber = useMemo(
     () => new Map(state.loans.map((loan) => [loan.number, loan])),
     [state.loans],
@@ -235,96 +200,123 @@ function Tracking({
       ? (loanByNumber.get(movement.loanNumber ?? '')?.borrower.company ?? 'Internal (Warehouse)')
       : 'Internal (Warehouse)';
 
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount);
-  const visible = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const columns: Column<Movement>[] = [
+    {
+      id: 'date',
+      header: 'Date',
+      className: 'num',
+      skeleton: 90,
+      sort: (movement) => movement.at,
+      cell: (movement) => formatDate(movement.at),
+    },
+    {
+      id: 'type',
+      header: 'Transaction',
+      skeleton: 110,
+      sort: (movement) => MOVEMENT_LABELS[movement.type],
+      cell: (movement) => <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>,
+    },
+    {
+      id: 'partner',
+      header: 'Borrower / Partner',
+      width: '1.3fr',
+      skeleton: 140,
+      sort: partnerOf,
+      cell: partnerOf,
+    },
+    {
+      id: 'unit',
+      header: 'Asset Code',
+      skeleton: 110,
+      sort: (movement) => movement.unitCode,
+      cell: (movement) => (
+        <Link to={`/units/${movement.unitCode}`} className="row-link mono">
+          {movement.unitCode}
+        </Link>
+      ),
+    },
+    {
+      id: 'state',
+      header: 'Status',
+      skeleton: 'chip',
+      sort: (movement) => STATUS_LABELS[movement.toStatus],
+      cell: (movement) => <StatusChip status={movement.toStatus} />,
+    },
+    {
+      id: 'note',
+      header: 'Remarks',
+      width: '1.4fr',
+      skeleton: 160,
+      cell: (movement) => movement.note,
+    },
+  ];
 
   return (
     <section className="card table-card" aria-labelledby="tracking-title">
       <div className="card-head" style={{ paddingBottom: 14 }}>
         <h2 id="tracking-title">Demo Unit Tracking Record</h2>
-        {canExport && (
-          <Button
-            size="sm"
-            icon={Download}
-            onClick={() =>
-              downloadCsv(
-                `tracking-record-${toDateKey(new Date())}.csv`,
-                ['Date', 'Transaction', 'Borrower / Partner', 'Asset code', 'Status', 'Remarks'],
-                rows.map((movement) => [
-                  movement.at,
-                  MOVEMENT_LABELS[movement.type],
-                  partnerOf(movement),
-                  movement.unitCode,
-                  STATUS_LABELS[movement.toStatus],
-                  movement.note,
-                ]),
-              )
-            }
-          >
-            Export CSV
-          </Button>
-        )}
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Transaction</th>
-            <th>Borrower / Partner</th>
-            <th>Asset Code</th>
-            <th>Status</th>
-            <th>Remarks</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((movement) => (
-            <tr key={movement.id}>
-              <td data-label="Date" className="num">
-                {formatDate(movement.at)}
-              </td>
-              <td data-label="Transaction">
-                <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>
-              </td>
-              <td data-label="Borrower / Partner">{partnerOf(movement)}</td>
-              <td data-label="Asset Code">
-                <Link to={`/units/${movement.unitCode}`} className="row-link mono">
-                  {movement.unitCode}
-                </Link>
-              </td>
-              <td data-label="Status">
-                <StatusChip status={movement.toStatus} />
-              </td>
-              <td data-label="Remarks">{movement.note}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <TableFoot
-        page={current}
-        pageSize={PAGE_SIZE}
-        total={rows.length}
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(movement) => String(movement.id)}
         noun="movements"
-        onPage={onPage}
+        pageSize={PAGE_SIZE}
+        syncUrl
+        search={{
+          placeholder: 'Search by asset code, partner, or remark…',
+          text: (movement) =>
+            `${movement.unitCode} ${partnerOf(movement)} ${movement.note} ${movement.loanNumber ?? ''}`,
+        }}
+        filters={[
+          {
+            id: 'type',
+            label: 'Transaction',
+            allLabel: 'All transactions',
+            options: TRACKED.map((type) => ({ value: type, label: MOVEMENT_LABELS[type] })),
+            test: (movement, value) => movement.type === value,
+          },
+          {
+            id: 'status',
+            label: 'Status',
+            allLabel: 'All statuses',
+            options: ACTIVE_STATUSES.map((status) => ({
+              value: status,
+              label: STATUS_LABELS[status],
+            })),
+            test: (movement, value) => movement.toStatus === value,
+          },
+        ]}
+        exportCsv={{
+          name: 'tracking-record',
+          header: ['Date', 'Transaction', 'Borrower / Partner', 'Asset code', 'Status', 'Remarks'],
+          row: (movement) => [
+            movement.at,
+            MOVEMENT_LABELS[movement.type],
+            partnerOf(movement),
+            movement.unitCode,
+            STATUS_LABELS[movement.toStatus],
+            movement.note,
+          ],
+        }}
       />
     </section>
   );
 }
 
-function Borrowers({ state, now, canExport }: { state: WmsState; now: Date; canExport: boolean }) {
+interface PartnerRow {
+  company: string;
+  loans: number;
+  open: number;
+  overdue: number;
+  missing: number;
+  last: string;
+}
+
+function Borrowers({ state, now }: { state: WmsState; now: Date }) {
   const today = toDateKey(now);
   const rows = useMemo(() => {
-    const byCompany = new Map<
-      string,
-      {
-        company: string;
-        loans: number;
-        open: number;
-        overdue: number;
-        missing: number;
-        last: string;
-      }
-    >();
+    const byCompany = new Map<string, PartnerRow>();
     for (const loan of state.loans) {
       if (!loan.releasedAt) continue;
       const row = byCompany.get(loan.borrower.company) ?? {
@@ -348,83 +340,99 @@ function Borrowers({ state, now, canExport }: { state: WmsState; now: Date; canE
     return [...byCompany.values()].sort((a, b) => b.loans - a.loans);
   }, [state.loans, today]);
 
+  const count = (id: string, header: string, value: (row: PartnerRow) => number) => ({
+    id,
+    header,
+    align: 'right' as const,
+    width: '0.8fr',
+    skeleton: 40,
+    className: 'num',
+    sort: value,
+    cell: value,
+  });
+  const columns: Column<PartnerRow>[] = [
+    {
+      id: 'company',
+      header: 'Company',
+      width: '1.6fr',
+      skeleton: 160,
+      sort: (row) => row.company,
+      cell: (row) => (
+        <Link to={`/borrow?tab=all&q=${encodeURIComponent(row.company)}`} className="row-link">
+          {row.company}
+        </Link>
+      ),
+    },
+    count('loans', 'Loans', (row) => row.loans),
+    count('open', 'On demo now', (row) => row.open),
+    {
+      ...count('overdue', 'Overdue', (row) => row.overdue),
+      className: (row) => (row.overdue > 0 ? 'num late' : 'num'),
+    },
+    count('missing', 'Missing accessory', (row) => row.missing),
+    {
+      id: 'last',
+      header: 'Last release',
+      align: 'right',
+      skeleton: 90,
+      className: 'num',
+      sort: (row) => row.last,
+      cell: (row) => formatDate(row.last),
+    },
+  ];
+
   return (
     <section className="card table-card" aria-labelledby="borrowers-title">
       <div className="card-head" style={{ paddingBottom: 14 }}>
         <h2 id="borrowers-title">Borrowing and Return History by Partner</h2>
-        {canExport && (
-          <Button
-            size="sm"
-            icon={Download}
-            onClick={() =>
-              downloadCsv(
-                `borrower-history-${today}.csv`,
-                [
-                  'Company',
-                  'Loans',
-                  'On demo now',
-                  'Overdue',
-                  'Returns with missing accessory',
-                  'Last release',
-                ],
-                rows.map((row) => [
-                  row.company,
-                  row.loans,
-                  row.open,
-                  row.overdue,
-                  row.missing,
-                  row.last,
-                ]),
-              )
-            }
-          >
-            Export CSV
-          </Button>
-        )}
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th className="right">Loans</th>
-            <th className="right">On demo now</th>
-            <th className="right">Overdue</th>
-            <th className="right">Missing accessory</th>
-            <th className="right">Last release</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.company} className={row.overdue > 0 ? 'is-late' : undefined}>
-              <td data-label="Company">
-                <Link
-                  to={`/borrow?tab=all&q=${encodeURIComponent(row.company)}`}
-                  className="row-link"
-                >
-                  {row.company}
-                </Link>
-              </td>
-              <td data-label="Loans" className="right num">
-                {row.loans}
-              </td>
-              <td data-label="On demo now" className="right num">
-                {row.open}
-              </td>
-              <td data-label="Overdue" className={row.overdue > 0 ? 'right num late' : 'right num'}>
-                {row.overdue}
-              </td>
-              <td data-label="Missing accessory" className="right num">
-                {row.missing}
-              </td>
-              <td data-label="Last release" className="right num">
-                {formatDate(row.last)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => row.company}
+        noun="partners"
+        pageSize={PAGE_SIZE}
+        syncUrl
+        rowClass={(row) => (row.overdue > 0 ? 'is-late' : undefined)}
+        search={{ placeholder: 'Search by company…', text: (row) => row.company }}
+        filters={[
+          {
+            id: 'standing',
+            label: 'Standing',
+            allLabel: 'All partners',
+            options: [
+              { value: 'open', label: 'Has a unit on demo' },
+              { value: 'overdue', label: 'Has an overdue return' },
+              { value: 'missing', label: 'Returned with a missing accessory' },
+            ],
+            test: (row, value) =>
+              value === 'open'
+                ? row.open > 0
+                : value === 'overdue'
+                  ? row.overdue > 0
+                  : row.missing > 0,
+          },
+        ]}
+        exportCsv={{
+          name: 'borrower-history',
+          header: [
+            'Company',
+            'Loans',
+            'On demo now',
+            'Overdue',
+            'Returns with missing accessory',
+            'Last release',
+          ],
+          row: (row) => [row.company, row.loans, row.open, row.overdue, row.missing, row.last],
+        }}
+      />
     </section>
   );
+}
+
+interface IdleRow {
+  unit: Unit;
+  days: number;
 }
 
 const AGE_BANDS: { label: string; maxDays: number }[] = [
@@ -455,7 +463,7 @@ function Aging({ state, now }: { state: WmsState; now: Date }) {
       grade
     ],
   }));
-  /** Units sitting in stock the longest since their last movement: candidates to redeploy. */
+  /** Units sitting in stock since their last movement, longest first: candidates to redeploy. */
   const idle = useMemo(() => {
     const lastAt = new Map<string, string>();
     for (const movement of state.movements) lastAt.set(movement.unitCode, movement.at);
@@ -465,9 +473,48 @@ function Aging({ state, now }: { state: WmsState; now: Date }) {
         unit,
         days: daysBetween(toDateKey(new Date(lastAt.get(unit.code) ?? unit.registeredAt)), today),
       }))
-      .sort((a, b) => b.days - a.days)
-      .slice(0, 8);
+      .sort((a, b) => b.days - a.days);
   }, [live, state.movements, today]);
+
+  const idleColumns: Column<IdleRow>[] = [
+    {
+      id: 'code',
+      header: 'Asset Code',
+      skeleton: 110,
+      sort: ({ unit }) => unit.code,
+      cell: ({ unit }) => (
+        <Link to={`/units/${unit.code}`} className="row-link mono">
+          {unit.code}
+        </Link>
+      ),
+    },
+    {
+      id: 'model',
+      header: 'Brand / Model',
+      width: '1.5fr',
+      skeleton: 150,
+      sort: ({ unit }) => `${unit.brand} ${unit.model}`,
+      cell: ({ unit }) => `${unit.brand} ${unit.model}`,
+    },
+    {
+      id: 'grade',
+      header: 'Condition',
+      width: '0.7fr',
+      skeleton: 30,
+      sort: ({ unit }) => unit.condition,
+      cell: ({ unit }) => unit.condition,
+    },
+    {
+      id: 'days',
+      header: 'Days idle',
+      align: 'right',
+      width: '0.7fr',
+      skeleton: 40,
+      className: 'num',
+      sort: ({ days }) => days,
+      cell: ({ days }) => days,
+    },
+  ];
 
   return (
     <>
@@ -490,38 +537,44 @@ function Aging({ state, now }: { state: WmsState; now: Date }) {
           <h2 id="idle-title">Longest idle in stock</h2>
           <span className="muted">Candidates for redeployment</span>
         </div>
-        {idle.length === 0 ? (
-          <Empty title="No idle stock" />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Asset Code</th>
-                <th>Brand / Model</th>
-                <th>Condition</th>
-                <th className="right">Days idle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {idle.map(({ unit, days }) => (
-                <tr key={unit.code}>
-                  <td data-label="Asset Code">
-                    <Link to={`/units/${unit.code}`} className="row-link mono">
-                      {unit.code}
-                    </Link>
-                  </td>
-                  <td data-label="Brand / Model">
-                    {unit.brand} {unit.model}
-                  </td>
-                  <td data-label="Condition">{unit.condition}</td>
-                  <td data-label="Days idle" className="right num">
-                    {days}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          rows={idle}
+          columns={idleColumns}
+          rowKey={({ unit }) => unit.code}
+          noun="idle units"
+          pageSize={IDLE_PAGE_SIZE}
+          syncUrl
+          empty={{ title: 'No idle stock', body: 'Every unit in stock moved recently.' }}
+          search={{
+            placeholder: 'Search by asset code or model…',
+            text: ({ unit }) => `${unit.code} ${unit.brand} ${unit.model}`,
+          }}
+          filters={[
+            {
+              id: 'category',
+              label: 'Category',
+              allLabel: 'All categories',
+              options: state.categories.map((item) => ({ value: item.code, label: item.name })),
+              test: ({ unit }, value) => unit.categoryCode === value,
+            },
+            {
+              id: 'grade',
+              label: 'Condition',
+              allLabel: 'All grades',
+              options: [
+                { value: 'A', label: 'A · Like new' },
+                { value: 'B', label: 'B · Light wear' },
+                { value: 'C', label: 'C · Heavy wear' },
+              ],
+              test: ({ unit }, value) => unit.condition === value,
+            },
+          ]}
+          exportCsv={{
+            name: 'idle-stock',
+            header: ['Asset code', 'Brand', 'Model', 'Condition', 'Days idle'],
+            row: ({ unit, days }) => [unit.code, unit.brand, unit.model, unit.condition, days],
+          }}
+        />
       </section>
     </>
   );
@@ -542,6 +595,70 @@ function Utilization({ state }: { state: WmsState }) {
         .filter((row) => row.total > 0),
     [state.categories, state.units],
   );
+  type UtilRow = (typeof rows)[number];
+  const share = (row: UtilRow) => Math.round((row.deployed / row.total) * 100);
+  const utilColumns: Column<UtilRow>[] = [
+    {
+      id: 'category',
+      header: 'Category',
+      width: '1.3fr',
+      skeleton: 120,
+      sort: (row) => row.category.name,
+      cell: (row) => (
+        <Link to={`/units?category=${row.category.code}`} className="row-link">
+          {row.category.name}
+        </Link>
+      ),
+    },
+    {
+      id: 'total',
+      header: 'Units',
+      align: 'right',
+      className: 'num',
+      sort: (row) => row.total,
+      cell: (row) => row.total,
+    },
+    {
+      id: 'available',
+      header: 'Available',
+      align: 'right',
+      className: 'num',
+      sort: (row) => row.available,
+      cell: (row) => row.available,
+    },
+    {
+      id: 'deployed',
+      header: 'On demo',
+      align: 'right',
+      className: 'num',
+      sort: (row) => row.deployed,
+      cell: (row) => row.deployed,
+    },
+    {
+      id: 'share',
+      header: 'Utilization',
+      width: '1.6fr',
+      sort: share,
+      cell: (row) => (
+        <span className="row" style={{ gap: 10, flexWrap: 'nowrap', minWidth: 140 }}>
+          <span className="hbar-track" style={{ flex: 1 }}>
+            <span
+              className="hbar-fill"
+              style={
+                {
+                  '--w': `${share(row)}%`,
+                  '--i': rows.indexOf(row),
+                  '--c': 'var(--st-on_demo)',
+                  display: 'block',
+                } as CSSProperties
+              }
+            />
+          </span>
+          <b className="num">{share(row)}%</b>
+        </span>
+      ),
+    },
+  ];
 
   return (
     <section className="card table-card" aria-labelledby="util-title">
@@ -549,58 +666,23 @@ function Utilization({ state }: { state: WmsState }) {
         <h2 id="util-title">Available vs deployed by category</h2>
         <span className="muted">Share of each category on demo right now</span>
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th className="right">Units</th>
-            <th className="right">Available</th>
-            <th className="right">On demo</th>
-            <th>Utilization</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const share = Math.round((row.deployed / row.total) * 100);
-            return (
-              <tr key={row.category.code}>
-                <td data-label="Category">
-                  <Link to={`/units?category=${row.category.code}`} className="row-link">
-                    {row.category.name}
-                  </Link>
-                </td>
-                <td data-label="Units" className="right num">
-                  {row.total}
-                </td>
-                <td data-label="Available" className="right num">
-                  {row.available}
-                </td>
-                <td data-label="On demo" className="right num">
-                  {row.deployed}
-                </td>
-                <td data-label="Utilization">
-                  <span className="row" style={{ gap: 10, flexWrap: 'nowrap', minWidth: 140 }}>
-                    <span className="hbar-track" style={{ flex: 1 }}>
-                      <span
-                        className="hbar-fill"
-                        style={
-                          {
-                            '--w': `${share}%`,
-                            '--i': index,
-                            '--c': 'var(--st-on_demo)',
-                            display: 'block',
-                          } as CSSProperties
-                        }
-                      />
-                    </span>
-                    <b className="num">{share}%</b>
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <DataTable
+        rows={rows}
+        columns={utilColumns}
+        rowKey={(row) => row.category.code}
+        noun="categories"
+        exportCsv={{
+          name: 'utilization',
+          header: ['Category', 'Units', 'Available', 'On demo', 'Utilization %'],
+          row: (row) => [
+            row.category.name,
+            row.total,
+            row.available,
+            row.deployed,
+            Math.round((row.deployed / row.total) * 100),
+          ],
+        }}
+      />
     </section>
   );
 }

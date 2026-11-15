@@ -484,8 +484,10 @@ async function workflow(browser) {
       'Tracking record',
     ]) {
       await page.getByRole('tab', { name: tab }).click();
-      await page.locator('.card').first().waitFor();
+      // Router updates run in a transition: wait for the new tab to be the selected one.
+      await page.locator('.tab[aria-selected="true"]', { hasText: tab }).waitFor();
     }
+    await page.getByRole('heading', { name: 'Demo Unit Tracking Record' }).waitFor();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'Export CSV' }).click(),
@@ -493,6 +495,85 @@ async function workflow(browser) {
     assert(
       /^tracking-record-.*\.csv$/.test(download.suggestedFilename()),
       download.suggestedFilename(),
+    );
+  });
+
+  await check('the tab highlight travels to the clicked tab and settles on it', async () => {
+    const tab = page.getByRole('tab', { name: 'Utilization' });
+    await tab.click();
+    await page.waitForTimeout(1200);
+    const [ink, target] = await Promise.all([
+      page.locator('.tab-ink').evaluate((node) => node.getBoundingClientRect().toJSON()),
+      tab.evaluate((node) => node.getBoundingClientRect().toJSON()),
+    ]);
+    assert(
+      Math.abs(ink.x - target.x) < 1.5 && Math.abs(ink.width - target.width) < 1.5,
+      `ink at ${ink.x}/${ink.width}, tab at ${target.x}/${target.width}`,
+    );
+  });
+
+  await check('a table sorts, searches, selects and batch-exports rows', async () => {
+    await page.goto(`${BASE}/units`);
+    const codes = () =>
+      page.$$eval('.table tbody td.td-lead', (cells) =>
+        cells.map((cell) => cell.textContent.trim()),
+      );
+    await page.locator('.table tbody tr').first().waitFor();
+    await page.getByRole('button', { name: 'Asset Code' }).click();
+    await page.locator('th[aria-sort="ascending"]', { hasText: 'Asset Code' }).waitFor();
+    const ascending = await codes();
+    assert(
+      ascending.join() === [...ascending].sort().join(),
+      `not ascending: ${ascending.slice(0, 3)}`,
+    );
+    await page.getByRole('button', { name: 'Asset Code' }).click();
+    await page.locator('th[aria-sort="descending"]', { hasText: 'Asset Code' }).waitFor();
+    const descending = await codes();
+    assert(descending[0] > descending.at(-1), 'not descending');
+
+    await page.getByPlaceholder(/Search by asset code/).fill(unitCode);
+    await page.waitForFunction(() => document.querySelectorAll('.table tbody tr').length === 1);
+    await page.getByRole('button', { name: 'Clear search' }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.table tbody tr').length > 1);
+
+    const boxes = page.locator('.table tbody td.td-select input');
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await page.locator('.batch[data-open="true"]').waitFor();
+    assert(
+      await page.locator('.th-select input').evaluate((node) => node.indeterminate),
+      'header box is not partly ticked',
+    );
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export selected' }).click(),
+    ]);
+    const file = await download.path();
+    const lines = (await import('node:fs')).readFileSync(file, 'utf8').trim().split('\n');
+    assert(lines.length === 3, `export has ${lines.length - 1} rows, expected 2`);
+    await page.getByRole('button', { name: 'Clear selection' }).click();
+    await page.locator('.batch[data-open="false"]').waitFor();
+  });
+
+  await check('a batch action moves several units in one go', async () => {
+    await page.goto(`${BASE}/units?status=in_stock&category=FW`);
+    await page.locator('.table tbody tr').first().waitFor();
+    const picked = await page.$$eval('.table tbody td.td-lead', (cells) =>
+      cells.slice(0, 2).map((cell) => cell.textContent.trim()),
+    );
+    const boxes = page.locator('.table tbody td.td-select input');
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await page.getByRole('button', { name: 'Move to shelf' }).click();
+    await choose(page, dialog(page).getByLabel('Shelf'), 'shelf-g-1');
+    await dialog(page).getByRole('button', { name: 'Move units' }).click();
+    await waitForState(
+      page,
+      (state) =>
+        picked.every(
+          (code) => state.units.find((unit) => unit.code === code).locationId === 'shelf-g-1',
+        ),
+      'both units on the new shelf',
     );
   });
 
