@@ -388,7 +388,8 @@ function ActivityLog({ people }: { people: User[] }) {
   const [params, setParams] = useSearchParams();
   const actorId = params.get('who') ?? undefined;
   const action = params.get('kind') ?? undefined;
-  const filterKey = JSON.stringify({ actorId, action });
+  const q = params.get('q') ?? undefined;
+  const filterKey = JSON.stringify({ actorId, action, q });
   const paging = useCursorPaging(
     filterKey,
     Math.max(1, Number(params.get('page')) || 1),
@@ -400,7 +401,7 @@ function ActivityLog({ people }: { people: User[] }) {
     },
   );
   const log = useResource(`audit:${filterKey}:${paging.cursor ?? ''}`, () =>
-    backend.audit({ actorId, action, cursor: paging.cursor, limit: LOG_PAGE_SIZE }),
+    backend.audit({ actorId, action, q, cursor: paging.cursor, limit: LOG_PAGE_SIZE }),
   );
 
   const columns: Column<AuditEntry>[] = [
@@ -453,6 +454,10 @@ function ActivityLog({ people }: { people: User[] }) {
           hasNext: Boolean(log.data?.nextCursor),
           onPage: (next) => paging.goTo(next, log.data?.nextCursor),
           refreshing: log.refreshing,
+        }}
+        search={{
+          placeholder: 'Search by person, action, or asset code…',
+          text: (entry) => entry.action,
         }}
         filters={[
           {

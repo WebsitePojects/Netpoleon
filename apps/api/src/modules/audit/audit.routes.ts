@@ -1,6 +1,6 @@
 import { auditEntrySchema, auditQuerySchema, type AuditEntry } from '@wms/contracts';
 import { schema, type Database } from '@wms/db';
-import { and, desc, eq, like, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, like, or, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { requirePermission, requireSession } from '../../plugins/session.js';
@@ -46,11 +46,22 @@ export function auditRoutes(db: Database): FastifyPluginCallbackZod {
       },
       (request) =>
         db.transaction(requireSession(request).scope, async (tx) => {
-          const { actorId, action, limit } = request.query;
+          const { q, actorId, action, limit } = request.query;
+          // A substring search scans; the keyset limit stops it early on common terms. Add a
+          // trigram index if the log grows past a few hundred thousand rows.
+          const pattern = q ? `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
           const cursor = decode(request.query.cursor);
           const conditions: (SQL | undefined)[] = [
             actorId ? eq(auditLog.actorUserId, actorId) : undefined,
             action ? like(auditLog.action, `${action}%`) : undefined,
+            pattern
+              ? or(
+                  ilike(auditLog.action, pattern),
+                  ilike(auditLog.targetType, pattern),
+                  ilike(users.fullName, pattern),
+                  sql`${auditLog.changedFields}::text ILIKE ${pattern}`,
+                )
+              : undefined,
             cursor
               ? sql`(${auditLog.occurredAt}, ${auditLog.id}) < (${cursor.at}::timestamptz, ${cursor.id}::uuid)`
               : undefined,

@@ -430,6 +430,8 @@ function RegisterDialog({ catalog, onClose }: { catalog: Catalog; onClose: () =>
           }
         >
           <Select
+            // Named on its own: the field's hint would otherwise become part of its name.
+            ariaLabel="Model"
             value={creating ? NEW_MODEL : modelId}
             onChange={setModelId}
             options={[

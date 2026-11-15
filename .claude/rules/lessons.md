@@ -8,6 +8,20 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-15
+- **`APP_ORIGIN` must be exactly the address the web app is served from.** Running a second web
+  server on port 5174 against an API configured for 5173 made every sign-in fail with "This
+  request did not come from the WMS app": the CSRF guard compares the browser's `Origin`. That
+  is the guard working; set `APP_ORIGIN` to the web origin you actually use.
+- **A label that wraps a hint makes the hint part of the control's name.** `Field` renders the
+  hint inside the `<label>`, so the model dropdown was named "Model … Ships with: …" and
+  `getByLabel('Model', { exact: true })` found nothing (a screen reader reads it all too). Give
+  such a control its own `ariaLabel`.
+- **Stopping a background shell task does not stop the Node server it started.** Old Vite
+  servers kept ports 5173 and 5174 with a stale module graph after a package `exports` change,
+  so every page showed a build error. Check the port's owner process and stop it, then restart.
+- **With server-side paging, the address changes before the new rows arrive.** E2E checks that
+  waited for the URL (or for "not busy") read the old rows. Wait for the rows themselves to
+  change (`waitForFunction` on the first row), and start a check from a freshly loaded list.
 - **Importing one helper from a package's main entry pulled zod into the browser bundle.** The
   web app used `passwordProblem` and `can` from `@wms/contracts`, whose index also builds every
   zod schema at load, and the bundle grew by about 120 kB. The package now has a zod-free

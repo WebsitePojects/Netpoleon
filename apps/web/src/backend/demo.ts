@@ -628,7 +628,14 @@ export class DemoBackend implements Backend {
     const newestFirst = [...audit]
       .reverse()
       .filter((entry) => !query.actorId || entry.actor === query.actorId)
-      .filter((entry) => !query.action || entry.action.startsWith(query.action));
+      .filter((entry) => !query.action || entry.action.startsWith(query.action))
+      .filter((entry) => {
+        const term = query.q?.trim().toLowerCase();
+        if (!term) return true;
+        return `${entry.actor} ${nameOf.get(entry.actor) ?? ''} ${entry.action} ${entry.target} ${entry.detail}`
+          .toLowerCase()
+          .includes(term);
+      });
     const start = Number(query.cursor ?? 0) || 0;
     const items: AuditEntry[] = newestFirst.slice(start, start + query.limit).map((entry) => ({
       id: String(entry.id),

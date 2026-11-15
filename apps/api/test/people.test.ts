@@ -348,3 +348,25 @@ describe('the activity log', () => {
     expect(new Set(seen).size).toBe(seen.length);
   });
 });
+
+describe('searching the activity log', () => {
+  it('finds entries by person, action or changed field, and escapes wildcards', async () => {
+    const { app, cookie } = await asAdmin();
+    const name = `Searchable ${unique()}`;
+    await send(app, 'POST', '/api/v1/partners', {
+      cookie,
+      headers: intent(),
+      body: { name, type: 'partner' },
+    });
+
+    const byField = await send(app, 'GET', `/api/v1/audit?q=${encodeURIComponent(name)}`, {
+      cookie,
+    });
+    const items = byField.json<{ items: { action: string }[] }>().items;
+    expect(items.map((item) => item.action)).toContain('partner.created');
+
+    const wildcard = await send(app, 'GET', '/api/v1/audit?q=%25%25%25', { cookie });
+    expect(wildcard.statusCode).toBe(200);
+    expect(wildcard.json<{ items: unknown[] }>().items).toHaveLength(0);
+  });
+});

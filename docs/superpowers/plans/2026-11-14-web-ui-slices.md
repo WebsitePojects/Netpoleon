@@ -65,6 +65,8 @@ Legend: **S1** built in slice 1 · S2, S3 later.
 - **Slice 2:** wire sign-in, units and users to the API; password reset and invite pages; label
   printing; partner companies; help centre.
 - **Slice 3:** wire borrowing, inspection, reports; partner portal; bulk import; custom reports.
+  The step-by-step plan for slice 3, deploy and the owed items is
+  `docs/superpowers/plans/2026-11-15-remaining-slices.md`.
 
 ## Slice 1 checklist
 

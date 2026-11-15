@@ -101,6 +101,8 @@ export const auditEntrySchema = z.strictObject({
 export type AuditEntry = z.infer<typeof auditEntrySchema>;
 
 export const auditQuerySchema = z.object({
+  /** Free text over the action, the record type, the person's name and the changed fields. */
+  q: z.string().trim().max(80).optional(),
   actorId: z.uuid().optional(),
   action: z
     .string()

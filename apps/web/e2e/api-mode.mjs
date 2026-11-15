@@ -39,12 +39,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 const dialog = () => page.getByRole('dialog');
-async function choose(field, value) {
-  await field.click();
-  await page.locator(`.popover [role="option"][data-value="${value}"]`).click();
-  await page.locator('.popover').waitFor({ state: 'detached' });
-}
 async function chooseByText(field, text) {
+  // A dropdown that already shows the value is left alone.
+  if ((await field.innerText()).includes(text)) return;
   await field.click();
   await page.locator('.popover [role="option"]', { hasText: text }).first().click();
   await page.locator('.popover').waitFor({ state: 'detached' });
@@ -99,6 +96,11 @@ await check('the units list is served by the server: search, sort and paging', a
   );
   await page.getByRole('button', { name: 'Next page' }).click();
   await page.waitForURL(/page=2/);
+  // The address changes a moment before the next page is asked for; wait for its rows.
+  await page.waitForFunction(
+    (first) => document.querySelector('.table tbody td.td-lead')?.textContent.trim() !== first,
+    firstPage[0],
+  );
   await settled();
   const secondPage = await page.$$eval('.table tbody td.td-lead', (cells) =>
     cells.map((cell) => cell.textContent.trim()),
@@ -122,9 +124,17 @@ await check('the units list is served by the server: search, sort and paging', a
   await page.getByRole('button', { name: 'Clear search' }).click();
   await settled();
 
+  // Start the sort from a freshly loaded list, not from one still refreshing after the search.
+  await page.goto(`${BASE}/units`);
+  await settled();
+  const before = await page.locator('.table tbody td.td-lead').first().innerText();
   await page.getByRole('button', { name: 'Asset Code' }).click();
   await page.getByRole('button', { name: 'Asset Code' }).click();
   await page.waitForURL(/sort=-code/);
+  await page.waitForFunction(
+    (first) => document.querySelector('.table tbody td.td-lead')?.textContent.trim() !== first,
+    before.trim(),
+  );
   await settled();
   const descending = await page.$$eval('.table tbody td.td-lead', (cells) =>
     cells.map((cell) => cell.textContent.trim()),
@@ -173,7 +183,7 @@ await check('move, repair, repair complete, then retire: each step is a movement
   await page.getByRole('button', { name: 'Retire' }).click();
   await dialog().getByLabel('Reason').fill('End of life (e2e)');
   await dialog().getByRole('button', { name: 'Retire unit' }).click();
-  await page.getByText('Retired').first().waitFor();
+  await page.locator('.table tbody td[data-label="Movement"]', { hasText: 'Retired' }).waitFor();
   const history = await page.$$eval('.table tbody td[data-label="Movement"]', (cells) =>
     cells.map((cell) => cell.textContent.trim()),
   );
@@ -189,10 +199,28 @@ await check('a batch move says which units it skipped', async () => {
   const boxes = page.locator('.table tbody td.td-select input');
   await boxes.nth(0).check();
   await boxes.nth(1).check();
-  await page.locator('.batch').getByRole('button', { name: 'Move to shelf' }).click();
-  await chooseByText(dialog().getByLabel('Shelf'), 'Shelf F-04');
-  await dialog().getByRole('button', { name: 'Move units' }).click();
-  await page.getByText(/moved to Shelf F-04/).waitFor();
+  // Two moves, so the second is certain to change shelves whatever an earlier run left behind.
+  for (const shelf of ['Shelf F-03', 'Shelf F-04']) {
+    await page.locator('.batch').getByRole('button', { name: 'Move to shelf' }).click();
+    await chooseByText(dialog().getByLabel('Shelf'), shelf);
+    await dialog().getByRole('button', { name: 'Move units' }).click();
+    if (shelf === 'Shelf F-04') {
+      await page.getByText(/2 moved to Shelf F-04/).waitFor();
+    } else {
+      await dialog()
+        .waitFor({ state: 'detached' })
+        .catch(async () => {
+          // Already on F-03 from an earlier run: the server refused, which is the right answer.
+          await dialog().getByRole('button', { name: 'Cancel' }).click();
+        });
+    }
+    await settled();
+    const boxes2 = page.locator('.table tbody td.td-select input');
+    if (shelf === 'Shelf F-03') {
+      if (!(await boxes2.nth(0).isChecked())) await boxes2.nth(0).check();
+      if (!(await boxes2.nth(1).isChecked())) await boxes2.nth(1).check();
+    }
+  }
 });
 
 await check('selected units print on the label sheet from one request', async () => {
@@ -232,7 +260,7 @@ await check('a partner company is added, given a contact, archived and restored'
   await dialog().getByLabel('Full name').fill('Ana Reyes');
   await dialog().getByLabel('Email').fill(`ana-${tag}@e2eco.example`);
   await dialog().getByRole('button', { name: 'Add contact' }).click();
-  await page.getByText('Ana Reyes').waitFor();
+  await page.locator('.contact-list').getByText('Ana Reyes').waitFor();
   await page.getByRole('button', { name: 'Archive' }).click();
   await page.getByText('Archived', { exact: true }).first().waitFor();
   await page.getByRole('button', { name: 'Restore' }).click();

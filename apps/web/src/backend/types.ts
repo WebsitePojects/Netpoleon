@@ -138,6 +138,7 @@ export interface Backend {
     limit: number;
     actorId?: string | undefined;
     action?: string | undefined;
+    q?: string | undefined;
   }): Promise<{
     items: AuditEntry[];
     nextCursor: string | null;
