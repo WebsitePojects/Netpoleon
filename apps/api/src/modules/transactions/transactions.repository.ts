@@ -1,10 +1,11 @@
-import type {
-  Candidates,
-  ExportTransactionsQuery,
-  Extension,
-  StageCounts,
-  Transaction,
-  TransactionUnit,
+import {
+  TRANSACTION_STAGES,
+  type Candidates,
+  type ExportTransactionsQuery,
+  type Extension,
+  type StageCounts,
+  type Transaction,
+  type TransactionUnit,
 } from '@wms/contracts';
 import type { Tx } from '@wms/db';
 import { sql, type SQL } from 'drizzle-orm';
@@ -152,12 +153,15 @@ export class TransactionsRepository {
     return { items: found.map((row) => toTransaction(row, today)), total };
   }
 
+  /** Every stage is present, zero when empty: the response schema requires all of them. */
   async stageCounts(tx: Tx): Promise<StageCounts> {
     const found = await rows<{ stage: keyof StageCounts; count: number }>(
       tx,
       sql`SELECT stage, count(*)::int AS count FROM transaction_overview GROUP BY stage`,
     );
-    return Object.fromEntries(found.map((row) => [row.stage, row.count])) as StageCounts;
+    const counts = Object.fromEntries(TRANSACTION_STAGES.map((stage) => [stage, 0])) as StageCounts;
+    for (const row of found) counts[row.stage] = row.count;
+    return counts;
   }
 
   async byNumber(tx: Tx, number: string, today: string): Promise<TransactionRecord | null> {

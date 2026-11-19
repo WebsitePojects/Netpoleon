@@ -53,9 +53,13 @@ describe('sign-in and sessions', () => {
     });
     expect(wrong.statusCode).toBe(401);
     expect(unknown.statusCode).toBe(401);
-    expect(wrong.json<{ code: string; title: string }>()).toMatchObject(
-      unknown.json<{ code: string; title: string }>(),
-    );
+    // Same status, code and title; only the per-request id differs.
+    const shape = (body: { status: number; code: string; title: string }) => [
+      body.status,
+      body.code,
+      body.title,
+    ];
+    expect(shape(wrong.json())).toEqual(shape(unknown.json()));
   });
 
   it('sets an HttpOnly, SameSite=Lax session cookie and never returns the token in the body', async () => {
