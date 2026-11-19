@@ -112,7 +112,7 @@ describe('loadConfig', () => {
   });
 
   describe('in production', () => {
-    const production = { ...validEnv, NODE_ENV: 'production' };
+    const production = { ...validEnv, NODE_ENV: 'production', APP_ORIGIN: 'https://wms.example.com' };
 
     it('refuses API_HOST 0.0.0.0', () => {
       expect(failure({ ...production, API_HOST: '0.0.0.0' }).invalidKeys).toContain('API_HOST');
@@ -136,6 +136,99 @@ describe('loadConfig', () => {
 
     it('accepts the default loopback host', () => {
       expect(loadConfig(production).apiHost).toBe('127.0.0.1');
+    });
+
+    it('refuses a plain-http APP_ORIGIN, because the session cookie would travel in clear', () => {
+      expect(failure({ ...production, APP_ORIGIN: 'http://wms.example.com' }).invalidKeys).toEqual([
+        'APP_ORIGIN',
+      ]);
+    });
+
+    it('marks cookies secure for an https origin', () => {
+      expect(loadConfig(production).secureCookies).toBe(true);
+    });
+  });
+
+  it('allows a plain-http origin outside production, with insecure cookies', () => {
+    expect(loadConfig(validEnv).secureCookies).toBe(false);
+  });
+
+  describe('mail', () => {
+    it('defaults to the log provider when SMTP_URL is unset', () => {
+      expect(loadConfig(validEnv).mail).toEqual({ provider: 'log' });
+    });
+
+    it('uses SMTP when SMTP_URL and MAIL_FROM are both set', () => {
+      const config = loadConfig({
+        ...validEnv,
+        SMTP_URL: 'smtps://mailer:s3cret@smtp.example.com:465',
+        MAIL_FROM: 'Netpoleon WMS <wms@example.com>',
+      });
+
+      expect(config.mail).toEqual({
+        provider: 'smtp',
+        url: 'smtps://mailer:s3cret@smtp.example.com:465',
+        from: 'Netpoleon WMS <wms@example.com>',
+      });
+    });
+
+    it('requires MAIL_FROM when SMTP_URL is set, without echoing the URL', () => {
+      const error = failure({ ...validEnv, SMTP_URL: 'smtp://mailer:s3cret@smtp.example.com' });
+
+      expect(error.invalidKeys).toEqual(['MAIL_FROM']);
+      expect(error.message).not.toContain('s3cret');
+    });
+
+    it('rejects an SMTP_URL that is not smtp or smtps', () => {
+      expect(failure({ ...validEnv, SMTP_URL: 'http://smtp.example.com' }).invalidKeys).toEqual([
+        'SMTP_URL',
+      ]);
+    });
+
+    it.each([
+      ['a line break that would inject a header', 'wms@example.com\r\nBcc: x@evil.test'],
+      ['no address', 'Netpoleon WMS'],
+      ['an unclosed display form', 'Netpoleon <wms@example.com'],
+    ])('rejects a MAIL_FROM with %s', (_label, value) => {
+      expect(
+        failure({ ...validEnv, SMTP_URL: 'smtp://smtp.example.com', MAIL_FROM: value }).invalidKeys,
+      ).toEqual(['MAIL_FROM']);
+    });
+
+    it('accepts a bare address as MAIL_FROM', () => {
+      const config = loadConfig({
+        ...validEnv,
+        SMTP_URL: 'smtp://smtp.example.com',
+        MAIL_FROM: 'wms@example.com',
+      });
+
+      expect(config.mail).toMatchObject({ provider: 'smtp', from: 'wms@example.com' });
+    });
+  });
+
+  describe('worker', () => {
+    it('defaults to no name and a 2 s poll', () => {
+      expect(loadConfig(validEnv).worker).toEqual({ name: null, pollIntervalMs: 2000 });
+    });
+
+    it('reads an explicit name and poll interval', () => {
+      const config = loadConfig({
+        ...validEnv,
+        WORKER_NAME: 'worker-1',
+        WORKER_POLL_INTERVAL_MS: '500',
+      });
+
+      expect(config.worker).toEqual({ name: 'worker-1', pollIntervalMs: 500 });
+    });
+
+    it('rejects a worker name with characters outside the safe set', () => {
+      expect(failure({ ...validEnv, WORKER_NAME: 'a b' }).invalidKeys).toEqual(['WORKER_NAME']);
+    });
+
+    it('rejects a poll interval below 250 ms', () => {
+      expect(failure({ ...validEnv, WORKER_POLL_INTERVAL_MS: '10' }).invalidKeys).toEqual([
+        'WORKER_POLL_INTERVAL_MS',
+      ]);
     });
   });
 

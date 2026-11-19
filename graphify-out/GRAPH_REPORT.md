@@ -1,12 +1,18 @@
-# Graph Report - .  (2026-11-14)
+# Graph Report - Netpoleon  (2026-11-19)
 
 ## Corpus Check
-- Corpus is ~40,615 words - fits in a single context window. You may not need a graph.
+- 157 files · ~110,507 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 594 nodes · 887 edges · 43 communities (38 shown, 5 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 57 edges (avg confidence: 0.82)
+- 1480 nodes · 2682 edges · 192 communities (91 shown, 101 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `1a9e0483`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_API App Composition|API App Composition]]
@@ -33,7 +39,6 @@
 - [[_COMMUNITY_Build Config B|Build Config B]]
 - [[_COMMUNITY_Build Config C|Build Config C]]
 - [[_COMMUNITY_Build Config D|Build Config D]]
-- [[_COMMUNITY_Asset Lifecycle Ledger|Asset Lifecycle Ledger]]
 - [[_COMMUNITY_Append-only History|Append-only History]]
 - [[_COMMUNITY_Package TS Config A|Package TS Config A]]
 - [[_COMMUNITY_Package TS Config B|Package TS Config B]]
@@ -48,30 +53,174 @@
 - [[_COMMUNITY_VPS Change Fingerprinting|VPS Change Fingerprinting]]
 - [[_COMMUNITY_Clean Code Standard|Clean Code Standard]]
 - [[_COMMUNITY_Idempotent Posting Layer|Idempotent Posting Layer]]
+- [[_COMMUNITY_Community 43|Community 43]]
+- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 45|Community 45]]
+- [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
+- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
+- [[_COMMUNITY_Community 51|Community 51]]
+- [[_COMMUNITY_Community 52|Community 52]]
+- [[_COMMUNITY_Community 53|Community 53]]
+- [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
+- [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 70|Community 70]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 73|Community 73]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
+- [[_COMMUNITY_Community 78|Community 78]]
+- [[_COMMUNITY_Community 79|Community 79]]
+- [[_COMMUNITY_Community 80|Community 80]]
+- [[_COMMUNITY_Community 81|Community 81]]
+- [[_COMMUNITY_Community 82|Community 82]]
+- [[_COMMUNITY_Community 83|Community 83]]
+- [[_COMMUNITY_Community 84|Community 84]]
+- [[_COMMUNITY_Community 85|Community 85]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Community 105|Community 105]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
+- [[_COMMUNITY_Community 109|Community 109]]
+- [[_COMMUNITY_Community 110|Community 110]]
+- [[_COMMUNITY_Community 111|Community 111]]
+- [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 115|Community 115]]
+- [[_COMMUNITY_Community 116|Community 116]]
+- [[_COMMUNITY_Community 117|Community 117]]
+- [[_COMMUNITY_Community 118|Community 118]]
+- [[_COMMUNITY_Community 119|Community 119]]
+- [[_COMMUNITY_Community 120|Community 120]]
+- [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
+- [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 132|Community 132]]
+- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
+- [[_COMMUNITY_Community 139|Community 139]]
+- [[_COMMUNITY_Community 140|Community 140]]
+- [[_COMMUNITY_Community 141|Community 141]]
+- [[_COMMUNITY_Community 142|Community 142]]
+- [[_COMMUNITY_Community 143|Community 143]]
+- [[_COMMUNITY_Community 144|Community 144]]
+- [[_COMMUNITY_Community 147|Community 147]]
+- [[_COMMUNITY_Community 148|Community 148]]
+- [[_COMMUNITY_Community 149|Community 149]]
+- [[_COMMUNITY_Community 150|Community 150]]
+- [[_COMMUNITY_Community 151|Community 151]]
+- [[_COMMUNITY_Community 152|Community 152]]
+- [[_COMMUNITY_Community 153|Community 153]]
+- [[_COMMUNITY_Community 154|Community 154]]
+- [[_COMMUNITY_Community 155|Community 155]]
+- [[_COMMUNITY_Community 156|Community 156]]
+- [[_COMMUNITY_Community 157|Community 157]]
+- [[_COMMUNITY_Community 158|Community 158]]
+- [[_COMMUNITY_Community 159|Community 159]]
+- [[_COMMUNITY_Community 160|Community 160]]
+- [[_COMMUNITY_Community 161|Community 161]]
+- [[_COMMUNITY_Community 162|Community 162]]
+- [[_COMMUNITY_Community 163|Community 163]]
+- [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 165|Community 165]]
+- [[_COMMUNITY_Community 166|Community 166]]
+- [[_COMMUNITY_Community 167|Community 167]]
+- [[_COMMUNITY_Community 168|Community 168]]
+- [[_COMMUNITY_Community 169|Community 169]]
+- [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 171|Community 171]]
+- [[_COMMUNITY_Community 172|Community 172]]
+- [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
+- [[_COMMUNITY_Community 175|Community 175]]
+- [[_COMMUNITY_Community 176|Community 176]]
+- [[_COMMUNITY_Community 177|Community 177]]
+- [[_COMMUNITY_Community 178|Community 178]]
+- [[_COMMUNITY_Community 179|Community 179]]
+- [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
+- [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 189|Community 189]]
+- [[_COMMUNITY_Community 191|Community 191]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Fixtures` - 26 edges
-2. `getTestDb()` - 21 edges
-3. `compilerOptions` - 16 edges
-4. `MigrationRunner` - 15 edges
-5. `Database` - 13 edges
-6. `RoleBootstrapper` - 13 edges
-7. `sqlState()` - 12 edges
-8. `connect()` - 12 edges
-9. `Netpoleon WMS Foundation Design spec` - 11 edges
-10. `loadConfig()` - 9 edges
+1. `WmsStore` - 50 edges
+2. `useWmsState()` - 41 edges
+3. `useStore()` - 32 edges
+4. `useCurrentUser()` - 31 edges
+5. `Fixtures` - 31 edges
+6. `useToast()` - 30 edges
+7. `useAuth()` - 29 edges
+8. `toDateKey()` - 24 edges
+9. `usePageReady()` - 23 edges
+10. `getTestDb()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Composition root (buildApp)` --references--> `buildApp()`  [INFERRED]
-  .claude/rules/architecture.md → apps/api/src/app.ts
-- `Task 3: typed schema, pools and transaction wrapper` --implements--> `Database`  [INFERRED]
-  docs/superpowers/plans/2026-11-13-foundation-scaffold.md → packages/db/src/client.ts
-- `RFC 9457 problem+json error envelope and AppError` --references--> `AppError`  [INFERRED]
-  docs/superpowers/plans/2026-11-13-foundation-scaffold.md → apps/api/src/errors.ts
-- `Three-layer API: routes -> services -> repositories -> Database` --references--> `HealthService`  [INFERRED]
-  .claude/rules/architecture.md → apps/api/src/modules/health/health.service.ts
-- `Local development start-up procedure` --references--> `HealthService`  [INFERRED]
-  docs/RUNBOOK.md → apps/api/src/modules/health/health.service.ts
+- `Prod api service (loopback-bound port)` --shares_data_with--> `loadConfig()`  [INFERRED]
+  infra/docker/compose.prod.yml → packages/config/src/index.ts
+- `Prod migrate one-shot service (bootstrap roles then migrate)` --references--> `MigrationRunner`  [INFERRED]
+  infra/docker/compose.prod.yml → packages/db/src/migrate/runner.ts
+- `readConfigOrExit()` --calls--> `loadConfig()`  [INFERRED]
+  apps/api/src/server.ts → packages/config/src/index.ts
+- `configFor()` --calls--> `loadConfig()`  [INFERRED]
+  apps/api/test/harness.ts → packages/config/src/index.ts
+- `CI verify job (format, lint, typecheck, test)` --conceptually_related_to--> `Section 15 hardening (how it fails and what stops it)`  [INFERRED]
+  .github/workflows/ci.yml → docs/superpowers/specs/2026-11-13-netpoleon-wms-foundation-design.md
 
 ## Import Cycles
 - None detected.
@@ -81,43 +230,43 @@
 - **Duplicate-safe mutating endpoint mechanisms** — _claude_rules_idempotency_concurrency_idempotency_key_store, _claude_rules_idempotency_concurrency_conditional_state_transition_update, _claude_rules_idempotency_concurrency_unique_constraint_recovery, _claude_rules_idempotency_concurrency_central_posting_layer, _claude_rules_idempotency_concurrency_double_fire_test [EXTRACTED 1.00]
 - **Safe shared-VPS deploy workflow** — docs_deploy_vps_read_only_server_pass, _claude_rules_vps_safety_fingerprint_before_after, _claude_rules_vps_safety_target_by_exact_name, _claude_rules_vps_safety_rollback_for_every_change, docs_deploy_vps_rollback_by_image_digest [INFERRED 0.85]
 
-## Communities (43 total, 5 thin omitted)
+## Communities (192 total, 101 thin omitted)
 
 ### Community 0 - "API App Composition"
-Cohesion: 0.05
-Nodes (35): AppDeps, buildApp(), AppError, createLogger(), REDACTED_PATHS, healthRoutes(), okSchema, readySchema (+27 more)
+Cohesion: 0.18
+Nodes (9): AppDeps, healthRoutes(), okSchema, readySchema, HealthService, generateRequestId(), requestIdPlugin, SecurityHeadersOptions (+1 more)
 
 ### Community 1 - "Database Guarantee Tests"
-Cohesion: 0.08
-Nodes (24): ColumnShape, schemaExports, tables, ATTACKS, TABLES, HISTORY_TRIGGERS, RLS_TABLES, Fixtures (+16 more)
+Cohesion: 0.23
+Nodes (12): ATTACKS, TABLES, OverviewRow, SeededStatus, StaffRole, connect(), getTestDb(), inRolledBackTransaction() (+4 more)
 
 ### Community 2 - "Typed Table Definitions"
-Cohesion: 0.08
-Nodes (48): assetMovements, assetTransitions, auditLog, notifications, assets, locations, modelAccessories, productModels (+40 more)
+Cohesion: 0.05
+Nodes (60): Database, Tx, assetMovements, assetTransitions, auditLog, notifications, assets, categories (+52 more)
 
 ### Community 3 - "Project Memory System"
-Cohesion: 0.09
-Nodes (27): .claude/README.md, lesson-guard Stop hook, Self-improving memory loop, Before ending a session that changed code, Where each kind of knowledge lives, Delivery workflow (plan first, sonnet builders, opus reviews), Self-improvement loop (lessons.md, Stop hook), Commercial model (monthly subscription, IP stays with Prince IT) (+19 more)
+Cohesion: 0.25
+Nodes (4): Commands, Ground rules, Layout, Netpoleon WMS
 
 ### Community 4 - "Code Rules and CI"
-Cohesion: 0.07
-Nodes (31): Composition root (buildApp), Object rules (classes with constructor injection, no module-level mutable state), No .env* file is ever tracked, Lesson: Vitest needs ssr.resolve.conditions for wms-source, CI pnpm audit of production dependencies, CI docker image build (infra/docker/Dockerfile), CI gitleaks full-history secret scan, CI verify job (format, lint, typecheck, test) (+23 more)
+Cohesion: 0.13
+Nodes (17): configFor(), AppConfig, bindsBeyondLoopback(), ConfigError, crossFieldProblems(), DbConfig, loadConfig(), LOOPBACK_HOSTS (+9 more)
 
 ### Community 5 - "Architecture Decisions and Ops"
-Cohesion: 0.09
-Nodes (19): Database.transaction(scope, fn) is the only door, Three-layer API: routes -> services -> repositories -> Database, Deploy gaps: backups, first admin, image publishing, vulnerability scan, Runbook placeholders: restore, rotate secret, first administrator, Encrypted nightly backups with rehearsed restore, Data confidentiality boundary (VPS-only identity and data, encrypted backups), Approach A: modular monolith (TypeScript, Fastify, Drizzle, PostgreSQL, Compose), Rejected approach B: NestJS with Prisma (+11 more)
+Cohesion: 0.33
+Nodes (6): Create the first administrator, Local development start-up, Restore from backup, Rotate a secret, Runbook, Running the checks
 
 ### Community 6 - "Role Bootstrap"
-Cohesion: 0.08
-Nodes (18): APP_ROLE_LIMITS, APP_ROLES, RoleBootstrapper, RoleName, RolePasswords, bootstrap(), COMMANDS, migrate() (+10 more)
+Cohesion: 0.16
+Nodes (9): APP_ROLE_LIMITS, APP_ROLES, RoleBootstrapper, RoleName, RolePasswords, MIGRATIONS_DIR, secret(), setup() (+1 more)
 
 ### Community 7 - "Root Tooling Manifest"
 Cohesion: 0.07
-Nodes (26): description, devDependencies, eslint, eslint-config-prettier, @eslint/js, globals, prettier, @types/node (+18 more)
+Nodes (27): description, devDependencies, eslint, eslint-config-prettier, @eslint/js, eslint-plugin-react-hooks, globals, prettier (+19 more)
 
 ### Community 8 - "API Dependencies"
-Cohesion: 0.08
-Nodes (25): dependencies, fastify, @fastify/helmet, fastify-plugin, @fastify/swagger, fastify-type-provider-zod, pino, @wms/config (+17 more)
+Cohesion: 0.06
+Nodes (35): dependencies, drizzle-orm, fastify, @fastify/cookie, @fastify/etag, @fastify/helmet, fastify-plugin, @fastify/rate-limit (+27 more)
 
 ### Community 9 - "DB Package Dependencies"
 Cohesion: 0.08
@@ -136,28 +285,20 @@ Cohesion: 0.13
 Nodes (14): default, dependencies, zod, exports, name, private, scripts, build (+6 more)
 
 ### Community 13 - "Shared API Contracts"
-Cohesion: 0.40
-Nodes (6): Page, pageOf(), PageQuery, pageQuerySchema, Problem, problemSchema
+Cohesion: 0.19
+Nodes (11): countSchema, Page, pageOf(), pageQuery, pageQuerySchema, pagingShape, plainPageQuery, SORT_ORDERS (+3 more)
 
 ### Community 14 - "Data Model and Partner Wall"
-Cohesion: 0.22
-Nodes (9): Forward-only hand-written SQL migrations with checksums, New table checklist (FK indexes, grants, RLS, schema type, EXPECTED_MIGRATION_COUNT), EFFICIENT standard (no N+1, index filters, think 100x), ActorScope (staff, partner, system) type, Plan review focus (scope never set, concurrent approvals, edited migration, DB down, bad config), Task 3: typed schema, pools and transaction wrapper, Invitation-only accounts and single-tenant deployment, Partner wall (wms_partner role under row-level security) (+1 more)
+Cohesion: 0.20
+Nodes (9): File map, Foundation Scaffold Implementation Plan, Global Constraints, Review Focus, Task 1: Workspace skeleton, config and contracts packages, infra, CI, Task 2: Migrations, runner, role bootstrap, guarantee tests, Task 3: Typed schema, pools and the transaction wrapper, Task 4: API process — boot, health, errors, hardening (+1 more)
 
 ### Community 15 - "Lesson Guard Hook"
-Cohesion: 0.31
-Nodes (8): block(), changedFiles(), { execSync }, fs, LESSONS_REL, main(), mtime(), path
+Cohesion: 0.06
+Nodes (56): App(), AuthValue, ToastProvider(), StoreContext, StoreProvider(), AP_KIT, APPROVERS, BORROWERS (+48 more)
 
-### Community 17 - "Definition of Done"
-Cohesion: 0.25
-Nodes (8): graphify-out code map, Falsify, don't justify, before saying done, AI-generated code is highest-risk code, Definition of done checklist, Double-fire test (sequential and concurrent), Frontend in-flight guard and one idempotency key per intent, Agent hard rules (no .env, no weakened DB guarantee, no edited migration), Task 5: integration and falsification (coordinator)
-
-### Community 18 - "Product Scope and Outbox"
-Cohesion: 0.25
-Nodes (8): Netpoleon WMS product, Promised alerts (overdue, missing accessory, inspection, redeployment), Promised modules (inventory, borrowing, assets, inspection, reports, access), Idempotency-Key store, No fire-and-forget side effects (outbox with lease and bounded retry), Idempotency-Key on every logged-in mutating endpoint, Today is Asia/Manila, stated in the query, Transactional outbox with SKIP LOCKED worker lease
-
-### Community 19 - "Booking Rules"
-Cohesion: 0.29
-Nodes (7): Conditional state-transition UPDATE, Elevated availability count function (counts only, no foreign rows), Partners book a model for a date range; staff assign the unit, Reservations flagged needs_reassignment, never silently moved, No double booking (reservations_no_overlap exclusion constraint), Pending requests do not hold stock; partial approval allowed, Reservation turnaround buffer and uncollected-reservation expiry
+### Community 16 - "Migration Runner"
+Cohesion: 0.20
+Nodes (5): MigrationChecksumError, MigrationFile, MigrationResult, MigrationRunner, MIGRATIONS_DIR
 
 ### Community 20 - "Build Config A"
 Cohesion: 0.29
@@ -175,14 +316,6 @@ Nodes (6): compilerOptions, declaration, outDir, rootDir, extends, include
 Cohesion: 0.29
 Nodes (6): compilerOptions, declaration, outDir, rootDir, extends, include
 
-### Community 24 - "Asset Lifecycle Ledger"
-Cohesion: 0.33
-Nodes (5): Asset status changes only through a recorded movement, 7-step demo unit lifecycle, Asset status is physical; reserved is derived from reservations, asset_transitions allowed-lifecycle table, Status and history never disagree (movement-trigger, no UPDATE on assets.status)
-
-### Community 25 - "Append-only History"
-Cohesion: 0.33
-Nodes (6): Database is the last line of defence, Nothing with movement history is hard-deleted, Unique constraint with recovery outside aborted transaction, Append-only asset_movements and audit_log, audit_log per-entity field allow-list, One open loan per unit (partial unique index on loan_items)
-
 ### Community 26 - "Package TS Config A"
 Cohesion: 0.33
 Nodes (5): compilerOptions, customConditions, noEmit, extends, include
@@ -192,8 +325,8 @@ Cohesion: 0.33
 Nodes (5): compilerOptions, customConditions, noEmit, extends, include
 
 ### Community 28 - "Database Roles and Services"
-Cohesion: 0.40
-Nodes (5): Task 2: migrations, runner, role bootstrap, guarantee tests, Three database roles (wms_migrator, wms_staff, wms_partner), Dev postgres service (loopback 5432), Prod migrate one-shot service (bootstrap roles then migrate), Prod postgres service
+Cohesion: 0.17
+Nodes (13): CI pnpm audit of production dependencies, CI docker image build (infra/docker/Dockerfile), CI gitleaks full-history secret scan, CI verify job (format, lint, typecheck, test), Section 15 hardening (how it fails and what stops it), Three database roles (wms_migrator, wms_staff, wms_partner), Dev postgres service (loopback 5432), Prod api service (loopback-bound port) (+5 more)
 
 ### Community 29 - "Package TS Config C"
 Cohesion: 0.40
@@ -211,33 +344,237 @@ Nodes (4): endOfLine, printWidth, singleQuote, trailingComma
 Cohesion: 0.40
 Nodes (4): compilerOptions, noEmit, extends, include
 
-### Community 34 - "Security Imperatives"
-Cohesion: 0.67
-Nodes (3): Fail closed on unrecognized enum/route/state, Security imperatives (validate at boundary, constant-time compare, no secrets in logs, server-side authz), Opaque hashed-token sessions with argon2id passwords
+### Community 43 - "Community 43"
+Cohesion: 0.04
+Nodes (50): ASSET_STATUSES, assetCodeSchema, AssetStatus, assetStatusSchema, BulkResult, bulkResultSchema, BulkRow, bulkRowSchema (+42 more)
 
-### Community 35 - "Deploy Rollback Safety"
-Cohesion: 0.67
-Nodes (3): No destructive command without explicit yes, Every change has a written rollback and backup, Rollback by pinning previous image digest
+### Community 44 - "Community 44"
+Cohesion: 0.11
+Nodes (33): CONDITION_OPTIONS, Select(), SkPage(), AccessoryChecklist(), ActionDialog(), BaseProps, ReasonDialog(), ScanField() (+25 more)
+
+### Community 45 - "Community 45"
+Cohesion: 0.12
+Nodes (14): ALLOWED_ENVIRONMENTS, assertSeedAllowed(), requireEnv(), SeedRefusedError, main(), buildSeedPlan(), SeedPlan, DevSeeder (+6 more)
+
+### Community 46 - "Community 46"
+Cohesion: 0.06
+Nodes (30): Category, CategoryWithCount, categoryWithCountSchema, CreateCategoryBody, CreateLocationBody, CreateModelBody, listCategoriesResponse, listLocationsResponse (+22 more)
+
+### Community 47 - "Community 47"
+Cohesion: 0.07
+Nodes (27): dependencies, @fontsource-variable/manrope, lucide-react, qrcode-generator, react, react-dom, react-router-dom, @tanstack/react-query (+19 more)
+
+### Community 48 - "Community 48"
+Cohesion: 0.12
+Nodes (22): SkTable(), Empty(), TabItem, ACTIVE_STATUSES, Alert, ALERT_TITLES, AlertKind, buildAlerts() (+14 more)
+
+### Community 49 - "Community 49"
+Cohesion: 0.12
+Nodes (18): AuthContext, Avatar(), FormError(), Action, ACTION_LABELS, can(), GRANTS, MANAGER_ACTIONS (+10 more)
+
+### Community 50 - "Community 50"
+Cohesion: 0.19
+Nodes (20): OrgType, Assignment, LendingSinks, StaffIds, Transaction, AuditRow, ConditionGrade, CounterRow (+12 more)
+
+### Community 52 - "Community 52"
+Cohesion: 0.30
+Nodes (21): AuthProvider(), useCurrentUser(), useToast(), useStore(), useWmsState(), Borrow(), InspectDialog(), Inspection() (+13 more)
+
+### Community 53 - "Community 53"
+Cohesion: 0.12
+Nodes (14): applyTheme(), EdgeWave, INK_LEAD, INK_TRAIL, InkEdge, prefersReducedMotion(), radiusToCover(), randomWaves() (+6 more)
+
+### Community 54 - "Community 54"
+Cohesion: 0.13
+Nodes (18): AP_KIT, BORROWERS, BorrowerSpec, END_CUSTOMERS, FIREWALL_KIT, LAPTOP_KIT, ModelSpec, PURPOSES (+10 more)
+
+### Community 55 - "Community 55"
+Cohesion: 0.19
+Nodes (5): Borrower, requestNoPrefix(), Scenarios, SeedPlanBuilder, smoothPath()
+
+### Community 56 - "Community 56"
+Cohesion: 0.20
+Nodes (15): Protected(), leftOnPurpose(), useAuth(), Brand(), usePageReady(), useSubmit(), Alerts(), Dashboard() (+7 more)
+
+### Community 57 - "Community 57"
+Cohesion: 0.11
+Nodes (16): Action, ACTION_LABELS, ACTIONS, actionSchema, AUDITOR_ACTIONS, GRANTS, MANAGER_ACTIONS, Role (+8 more)
+
+### Community 58 - "Community 58"
+Cohesion: 0.13
+Nodes (13): SelectOption, BatchAction, Changes, Column, CsvCell, DataTable(), SortValue, TableExport (+5 more)
+
+### Community 59 - "Community 59"
+Cohesion: 0.14
+Nodes (15): GlobalSearch(), NAV, NavItem, PersonMenu(), SearchHit, Shell(), SUN_RAYS, TAB_BAR (+7 more)
+
+### Community 61 - "Community 61"
+Cohesion: 0.15
+Nodes (11): check(), { chromium }, loanOf(), readState(), require, results, TOUR, unitOf() (+3 more)
+
+### Community 62 - "Community 62"
+Cohesion: 0.15
+Nodes (11): QrCode(), Draft, GeneralSection(), isSectionId(), LabelSection(), LoanSection(), NotificationSection(), SectionId (+3 more)
+
+### Community 63 - "Community 63"
+Cohesion: 0.25
+Nodes (10): assetCode(), assetCodePrefix(), Catalogue, CatalogueBuilder, SERIAL_ALPHABET, CATEGORY_SPECS, CategorySpec, LocationRow (+2 more)
+
+### Community 64 - "Community 64"
+Cohesion: 0.14
+Nodes (9): countByStatus(), KeyValueStorage, WmsError, addDays(), fileRequest(), MemoryStorage, NOW, PASSING_INSPECTION (+1 more)
+
+### Community 65 - "Community 65"
+Cohesion: 0.16
+Nodes (11): ColumnShape, columnsInDatabase(), schemaExports, tables, views, bootstrapperFor(), createScratchDatabase(), passwordOf() (+3 more)
+
+### Community 67 - "Community 67"
+Cohesion: 0.19
+Nodes (9): apps, urls, DatabaseUrls, registerProbeRoutes(), TestApp, TestAppOptions, TestApps, apps (+1 more)
+
+### Community 68 - "Community 68"
+Cohesion: 0.16
+Nodes (13): ButtonProps, CATEGORY_IMAGES, Crumb, LOAN_TONES, PageHead(), pageWindow(), Switch(), TableFoot() (+5 more)
+
+### Community 69 - "Community 69"
+Cohesion: 0.19
+Nodes (11): movementsByMonth(), monthKeyOf(), toDateKey(), AGE_BANDS, Aging(), Borrowers(), isTabId(), MOVEMENT_SERIES (+3 more)
+
+### Community 70 - "Community 70"
+Cohesion: 0.19
+Nodes (11): BarGroup, BarSeries, Donut(), GroupedBars(), HBars(), niceCeiling(), Slice, order() (+3 more)
+
+### Community 71 - "Community 71"
+Cohesion: 0.15
+Nodes (6): monthTitle, Placement, Sk(), SK_TABS, SkPageKind, WEEKDAYS
+
+### Community 72 - "Community 72"
+Cohesion: 0.15
+Nodes (13): 10. Infrastructure, 11. Repository layout, 12. Build order, 13. Left to the builder, 14. Open items for the project owner, 1. Intent, 2. Goals, non-goals, anti-goals, 3. Constraints (+5 more)
+
+### Community 73 - "Community 73"
+Cohesion: 0.21
+Nodes (8): AppError, describeError(), describeValidationFailure(), errorHandlerPlugin, FASTIFY_CLIENT_ERRORS, INTERNAL_ERROR, isFastifyClientError(), ProblemDescriptor
+
+### Community 74 - "Community 74"
+Cohesion: 0.21
+Nodes (11): DateField(), dateFormat, formatLongDate(), formatMonth(), formatRelative(), fromDateKey(), longDateFormat, monthFormat (+3 more)
+
+### Community 75 - "Community 75"
+Cohesion: 0.17
+Nodes (12): 1. Read the server first (read-only), 2. Decide from the output, 3. Environment variables, 3a. Set by the operator in `wms.env`, 3b. Set by compose, never by hand, 4. Prepare the server, 5. Start the stack, 6. Reverse proxy (+4 more)
+
+### Community 76 - "Community 76"
+Cohesion: 0.18
+Nodes (10): 1. Scope, 2. Decisions that reconcile the screens with the database, 3. Speed: what makes a page feel instant, 4. API surface (`/api/v1`), 5. Build waves, 6. How it gets falsified, 7. Deploy — gated on facts only the owner or the server can give, 8. Checklist (ticked when verified, not when written) (+2 more)
+
+### Community 77 - "Community 77"
+Cohesion: 0.38
+Nodes (5): AssetRow, AssetStatus, MovementRow, MovementType, UnitTimeline
+
+### Community 78 - "Community 78"
+Cohesion: 0.22
+Nodes (9): SuggestInput(), runBatch(), TableFilter, daysBetween(), isTabId(), PURPOSES, RequestDialog(), TAB_STATUSES (+1 more)
+
+### Community 79 - "Community 79"
+Cohesion: 0.20
+Nodes (9): compilerOptions, jsx, lib, module, moduleResolution, noEmit, types, extends (+1 more)
+
+### Community 80 - "Community 80"
+Cohesion: 0.20
+Nodes (9): Decisions, Demo accounts (demo data only, no real system behind them), Every page (all slices), Partner portal (S3), Public, Slice 1 checklist, Slices, Staff console (+1 more)
+
+### Community 81 - "Community 81"
+Cohesion: 0.22
+Nodes (8): companyRefSchema, orgStatusSchema, queryInt(), searchSchema, ListPartnersQuery, listPartnersResponse, Partner, partnerSchema
+
+### Community 82 - "Community 82"
+Cohesion: 0.28
+Nodes (6): bootstrap(), COMMANDS, migrate(), MIGRATIONS_DIR, MissingEnvError, requireEnv()
+
+### Community 83 - "Community 83"
+Cohesion: 0.43
+Nodes (5): buildApp(), createLogger(), REDACTED_PATHS, main(), readConfigOrExit()
+
+### Community 84 - "Community 84"
+Cohesion: 0.25
+Nodes (8): 15. Hardening — how it fails, and what stops it, Accounts and access, Duplicates and races, Known limits, stated honestly, Operations — the subscription promises this, Personal data, The database under load or misuse, Time
+
+### Community 86 - "Community 86"
+Cohesion: 0.29
+Nodes (6): Architecture — how the code is organised and why, Inside the API: three layers, one direction, Object rules (project owner's instruction), Rules that are easy to break by accident, Shape, The database is the last line of defence
+
+### Community 87 - "Community 87"
+Cohesion: 0.29
+Nodes (6): Before you say "done" — EVERY task, no exceptions, Engineering Conventions — Workflow & Self-Improvement, Extra rigor for risky / shared / production code, Netpoleon WMS-specific conventions, The self-improvement loop, Tooling defaults
+
+### Community 88 - "Community 88"
+Cohesion: 0.29
+Nodes (6): Domain — what the client was promised, Out of scope per the proposal, Promised behaviors that are easy to miss, Promised modules (section 6), The 7-step lifecycle (proposal section 3), The product
+
+### Community 89 - "Community 89"
+Cohesion: 0.29
+Nodes (6): 0. The one question that governs all others, 1. CLEAN — readable, changeable, maintainable, 2. EFFICIENT — does the job without wasting resources, 3. AI-GENERATED CODE IS NOT EXEMPT — it is the highest-risk code in the repo, 4. Definition of done, Engineering Standards — write it like company code
+
+### Community 90 - "Community 90"
+Cohesion: 0.29
+Nodes (6): Changing the server without collateral damage, Evidence before claims, Never leak secrets while gathering, VPS safety — shared production servers (non-negotiable), What counts as read-only, x-hardened container profile (read_only, cap_drop ALL, no-new-privileges)
+
+### Community 91 - "Community 91"
+Cohesion: 0.40
+Nodes (3): Commands, Hard rules, in one place, What this is
+
+### Community 92 - "Community 92"
+Cohesion: 0.40
+Nodes (3): Commands, Project memory (auto-loaded), What this is
+
+### Community 93 - "Community 93"
+Cohesion: 0.40
+Nodes (4): `.claude/` — Project Memory & Tooling, How it self-improves, How memory loads, Structure
+
+### Community 94 - "Community 94"
+Cohesion: 0.40
+Nodes (4): Agent context — where knowledge lives and how to keep it current, Before ending a session that changed code, The code map: `graphify-out/`, Where each kind of knowledge is written down
+
+### Community 95 - "Community 95"
+Cohesion: 0.40
+Nodes (4): Backend (every mutating endpoint), Frontend (every mutating control), Idempotency, Concurrency & Security — NON-NEGOTIABLE, Security imperatives
+
+### Community 96 - "Community 96"
+Cohesion: 0.40
+Nodes (4): 2026-11-13, 2026-11-14, 2026-11-15, Lessons Learned (append-only)
+
+### Community 97 - "Community 97"
+Cohesion: 0.40
+Nodes (5): 7. Data model, Asset status is physical, "reserved" is derived, Guarantees the database enforces, so application bugs cannot break them, How the partner wall actually holds, Tables
+
+### Community 98 - "Community 98"
+Cohesion: 0.50
+Nodes (4): 6. How booking works, Loading what already exists — **[CALL]**, Scanning and labels — **[CALL]**, The cases the happy path hides — all **[CALL]**
+
+### Community 99 - "Community 99"
+Cohesion: 0.50
+Nodes (3): CONSOLE_INDEXES, HISTORY_TRIGGERS, RLS_TABLES
 
 ## Knowledge Gaps
-- **240 isolated node(s):** `{ execSync }`, `fs`, `path`, `LESSONS_REL`, `singleQuote` (+235 more)
+- **653 isolated node(s):** `singleQuote`, `trailingComma`, `printWidth`, `endOfLine`, `name` (+648 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **101 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `MigrationRunner` connect `Migration Runner` to `Database Guarantee Tests`, `Architecture Decisions and Ops`, `Role Bootstrap`, `Data Model and Partner Wall`, `Database Roles and Services`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
-- **Why does `Database` connect `Architecture Decisions and Ops` to `Data Model and Partner Wall`?**
-  _High betweenness centrality (0.069) - this node is a cross-community bridge._
-- **Why does `Three-layer API: routes -> services -> repositories -> Database` connect `Architecture Decisions and Ops` to `API App Composition`, `Project Memory System`?**
-  _High betweenness centrality (0.067) - this node is a cross-community bridge._
-- **Are the 4 inferred relationships involving `MigrationRunner` (e.g. with `Forward-only hand-written SQL migrations with checksums` and `Local development start-up procedure`) actually correct?**
-  _`MigrationRunner` has 4 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 3 inferred relationships involving `Database` (e.g. with `Database.transaction(scope, fn) is the only door` and `Task 3: typed schema, pools and transaction wrapper`) actually correct?**
-  _`Database` has 3 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `{ execSync }`, `fs`, `path` to the rest of the system?**
-  _255 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `API App Composition` be split into smaller, more focused modules?**
-  _Cohesion score 0.05376972530683811 - nodes in this community are weakly interconnected._
+- **Why does `buildSeed()` connect `Lesson Guard Hook` to `Community 69`, `Community 60`, `Community 77`, `Community 63`?**
+  _High betweenness centrality (0.107) - this node is a cross-community bridge._
+- **Why does `getTestDb()` connect `Database Guarantee Tests` to `Community 99`, `Community 65`, `Typed Table Definitions`, `Community 67`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **Why does `MigrationRunner` connect `Migration Runner` to `Typed Table Definitions`, `Database Roles and Services`, `Community 82`, `Role Bootstrap`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **What connects `singleQuote`, `trailingComma`, `printWidth` to the rest of the system?**
+  _682 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Typed Table Definitions` be split into smaller, more focused modules?**
+  _Cohesion score 0.054363796650014694 - nodes in this community are weakly interconnected._
+- **Should `Code Rules and CI` be split into smaller, more focused modules?**
+  _Cohesion score 0.12554112554112554 - nodes in this community are weakly interconnected._
+- **Should `Root Tooling Manifest` be split into smaller, more focused modules?**
+  _Cohesion score 0.07142857142857142 - nodes in this community are weakly interconnected._

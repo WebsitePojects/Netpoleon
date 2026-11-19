@@ -12,6 +12,10 @@ const postgresUrl = z.url({ protocol: /^postgres(ql)?$/ });
 
 const httpOrigin = z.url({ protocol: /^https?$/ }).transform((value) => new URL(value).origin);
 
+// `addr@host.tld` or `Display Name <addr@host.tld>`. A line break would let the value inject
+// extra mail headers, so the pattern admits none.
+const MAIL_FROM_PATTERN = /^(?:[^\r\n<>]{1,100} <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/;
+
 /**
  * One flat object keyed by the real variable names, so a validation issue's path is the
  * variable the operator has to fix. Keys are what we report; values are never read back.
@@ -29,6 +33,14 @@ export const envSchema = z.object({
   DB_POOL_STAFF_MAX: integerIn(1, 100).default(10),
   DB_POOL_PARTNER_MAX: integerIn(1, 100).default(5),
   DB_STATEMENT_TIMEOUT_MS: integerIn(100, 600_000).default(5000),
+  // Unset means mail is written to the log as "queued" only (plan D11).
+  SMTP_URL: z.url({ protocol: /^smtps?$/ }).optional(),
+  MAIL_FROM: z.string().max(200).regex(MAIL_FROM_PATTERN).optional(),
+  WORKER_NAME: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,64}$/)
+    .optional(),
+  WORKER_POLL_INTERVAL_MS: integerIn(250, 60_000).default(2000),
 });
 
 export type ParsedEnv = z.infer<typeof envSchema>;

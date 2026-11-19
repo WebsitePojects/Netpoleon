@@ -94,7 +94,48 @@ export function describeError(error: unknown): ProblemDescriptor {
       }
     );
   }
+  const sqlState = sqlStateOf(error);
+  if (sqlState !== null) {
+    return DATABASE_CONFLICTS[sqlState] ?? INTERNAL_ERROR;
+  }
   return INTERNAL_ERROR;
+}
+
+// The database guarantees (exclusion constraint, unique keys, lock timeouts) are the last line
+// of defence. When one fires, the request lost a race or broke a rule the service did not
+// catch first; either way it is the caller's conflict, never a 500. Titles are fixed text: the
+// constraint name or value in the driver's message must not reach the client.
+const DATABASE_CONFLICTS: Readonly<Record<string, ProblemDescriptor>> = {
+  '23P01': {
+    status: 409,
+    code: 'unit_unavailable',
+    title: 'The unit is already booked for those dates',
+  },
+  '23505': { status: 409, code: 'duplicate', title: 'A record with that value already exists' },
+  '23514': { status: 422, code: 'rule_violated', title: 'The change breaks a business rule' },
+  '55P03': { status: 409, code: 'busy', title: 'The record is busy; try again' },
+  '40001': { status: 409, code: 'busy', title: 'The record is busy; try again' },
+  '40P01': { status: 409, code: 'busy', title: 'The record is busy; try again' },
+  // Raised by the movement trigger when the unit's status changed under the request.
+  WM001: { status: 409, code: 'status_changed', title: "The unit's status has changed" },
+};
+
+/** The SQLSTATE of a driver error, unwrapping Drizzle's query wrapper; null when there is none. */
+export function sqlStateOf(error: unknown): string | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && current; depth++) {
+    if (
+      typeof current === 'object' &&
+      'code' in current &&
+      typeof current.code === 'string' &&
+      /^[0-9A-Z]{5}$/.test(current.code) &&
+      'severity' in current
+    ) {
+      return current.code;
+    }
+    current = typeof current === 'object' && 'cause' in current ? current.cause : null;
+  }
+  return null;
 }
 
 function toProblem(descriptor: ProblemDescriptor, requestId: string): Problem {
