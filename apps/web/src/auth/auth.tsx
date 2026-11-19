@@ -1,106 +1,99 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useStore, useWmsState } from '../data/context.js';
-import { can, type Action } from '../data/permissions.js';
-import { DEMO_ADMIN_USERNAME, DEMO_PASSWORD } from '../data/seed.js';
-import type { User } from '../data/types.js';
+import type { Action, Bootstrap, SessionUser } from '@wms/contracts';
+import { useQueryClient } from '@tanstack/react-query';
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { ApiError, apiSend, onUnauthenticated } from '../api/client.js';
+import { keys, useBootstrap } from '../api/queries.js';
 
 /**
- * DEMO SIGN-IN. There is no server in slice 1, so nothing here is security: credentials are
- * checked against fixtures in the browser, and an empty form enters as the demo administrator
- * (project owner's instruction, 2026-11-14). The whole file is replaced by the API session
- * in slice 2; no screen imports anything from it except `useAuth`.
+ * Who is signed in, from the server. The session is an HttpOnly cookie the script never sees;
+ * the console only knows the bootstrap payload (person, permissions, settings, reference
+ * lists). Signing out or any 401 clears every cached query, so the next person to sit at this
+ * browser cannot see the previous one's data, even for a frame.
  */
-
-const SESSION_KEY = 'wms-demo-session';
-
 interface AuthValue {
-  user: User | null;
-  /** Returns an error message, or null when signed in. */
-  signIn: (username: string, password: string, remember: boolean) => string | null;
-  signOut: () => void;
-  /** Demo convenience: change account without the sign-in screen, to try each role. */
-  switchTo: (username: string) => void;
+  user: SessionUser | null;
+  bootstrap: Bootstrap | null;
+  /** True until the first answer about the session has arrived. */
+  loading: boolean;
+  /** Resolves to an error message, or null when signed in. */
+  signIn: (identifier: string, password: string, remember: boolean) => Promise<string | null>;
+  signOut: () => Promise<void>;
   can: (action: Action) => boolean;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
 
 /**
- * True between an explicit sign-out and the next sign-in. The route guard reads it so that
- * signing out and in again lands on the dashboard, not on the page the previous person left.
+ * True between an explicit sign-out and the next sign-in. The route guard reads it so signing
+ * out and in again lands on the dashboard, not on the page the previous person left.
  */
 let signedOutOnPurpose = false;
 export const leftOnPurpose = (): boolean => signedOutOnPurpose;
 
-function readSession(): string | null {
-  try {
-    return sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
-  } catch {
-    return null; // storage blocked: the visitor simply starts signed out
-  }
-}
-
-function writeSession(username: string | null, remember: boolean): void {
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(SESSION_KEY);
-    if (username) (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, username);
-  } catch {
-    // Storage blocked: the session lasts until the tab reloads.
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const store = useStore();
-  const { users } = useWmsState();
-  const [username, setUsername] = useState<string | null>(readSession);
+  const client = useQueryClient();
+  const bootstrapQuery = useBootstrap();
 
-  // Looked up on every render, so deactivating an account signs it out everywhere at once.
-  const user = users.find((item) => item.username === username && item.active) ?? null;
+  useEffect(
+    () =>
+      onUnauthenticated(() => {
+        // Keep the "signed out" answer, drop everything else the previous session loaded.
+        client.clear();
+        client.setQueryData(keys.bootstrap, null);
+      }),
+    [client],
+  );
+
+  const bootstrap = bootstrapQuery.data ?? null;
+  const user = bootstrap?.user ?? null;
 
   const signIn = useCallback(
-    (name: string, password: string, remember: boolean): string | null => {
-      const trimmed = name.trim().toLowerCase();
-      const isBypass = trimmed === '' && password === '';
-      const target = isBypass ? DEMO_ADMIN_USERNAME : trimmed;
-      const account = store.getState().users.find((item) => item.username === target);
-      const accepted = isBypass || password === DEMO_PASSWORD;
-      // One message for every failure, so the form never reveals which usernames exist.
-      if (!account || !account.active || !accepted) return 'Incorrect username or password.';
-      signedOutOnPurpose = false;
-      writeSession(account.username, remember);
-      setUsername(account.username);
-      store.touchUser(account.username);
-      return null;
+    async (identifier: string, password: string, remember: boolean): Promise<string | null> => {
+      try {
+        const data = await apiSend<Bootstrap>('POST', '/auth/login', {
+          identifier,
+          password,
+          remember,
+        });
+        signedOutOnPurpose = false;
+        client.clear();
+        client.setQueryData(keys.bootstrap, data);
+        return null;
+      } catch (error) {
+        if (error instanceof ApiError) {
+          return error.status === 429
+            ? 'Too many attempts. Wait a minute, then try again.'
+            : error.status === 401
+              ? 'Incorrect username or password.'
+              : error.message;
+        }
+        return 'Sign-in failed because of an unexpected error. Try again.';
+      }
     },
-    [store],
+    [client],
   );
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
     signedOutOnPurpose = true;
-    writeSession(null, false);
-    setUsername(null);
-  }, []);
+    try {
+      await apiSend('POST', '/auth/logout', {});
+    } finally {
+      client.clear();
+      client.setQueryData(keys.bootstrap, null);
+    }
+  }, [client]);
 
-  const switchTo = useCallback(
-    (name: string) => {
-      writeSession(name, false);
-      setUsername(name);
-      store.touchUser(name);
-    },
-    [store],
-  );
-
-  const value = useMemo<AuthValue>(
-    () => ({
+  const value = useMemo<AuthValue>(() => {
+    const granted = new Set(bootstrap?.permissions ?? []);
+    return {
       user,
+      bootstrap,
+      loading: bootstrapQuery.isPending && bootstrapQuery.fetchStatus !== 'idle',
       signIn,
       signOut,
-      switchTo,
-      can: (action) => (user ? can(user.role, action) : false),
-    }),
-    [user, signIn, signOut, switchTo],
-  );
+      can: (action) => granted.has(action),
+    };
+  }, [user, bootstrap, bootstrapQuery.isPending, bootstrapQuery.fetchStatus, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -112,8 +105,15 @@ export function useAuth(): AuthValue {
 }
 
 /** The signed-in user. Only for screens rendered inside the protected shell. */
-export function useCurrentUser(): User {
+export function useCurrentUser(): SessionUser {
   const { user } = useAuth();
   if (!user) throw new Error('useCurrentUser was called while signed out.');
   return user;
+}
+
+/** Reference data and settings from the bootstrap payload; only inside the protected shell. */
+export function useReference(): Bootstrap {
+  const { bootstrap } = useAuth();
+  if (!bootstrap) throw new Error('useReference was called while signed out.');
+  return bootstrap;
 }

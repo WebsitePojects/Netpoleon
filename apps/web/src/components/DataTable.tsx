@@ -2,7 +2,6 @@ import { ChevronDown, ChevronUp, Download, Search, X, type LucideIcon } from 'lu
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/auth.js';
-import { WmsError } from '../data/store.js';
 import { downloadCsv } from '../lib/csv.js';
 import { Select, SkTable, type SelectOption } from './controls.js';
 import { Button, Empty, TableFoot } from './ui.js';
@@ -60,6 +59,20 @@ interface TableState {
 }
 
 type Changes = Record<string, string>;
+
+/** The table's state as kept in the address: pages read it to build their API query. */
+export function readTableState(params: URLSearchParams, filterIds: readonly string[]) {
+  const sort = params.get('sort') ?? '';
+  return {
+    q: params.get('q') ?? '',
+    page: Math.max(1, Number(params.get('page')) || 1),
+    /** Column id and direction for the API: `-code` means code, descending. */
+    sort: sort
+      ? { sort: sort.replace(/^-/, ''), order: sort.startsWith('-') ? 'desc' : 'asc' }
+      : {},
+    filters: Object.fromEntries(filterIds.map((id) => [id, params.get(id) ?? ''])),
+  };
+}
 
 /**
  * Search, filters, sort and page of one table. With `syncUrl` they live in the address, so
@@ -159,6 +172,7 @@ export function DataTable<T>({
   rowClass,
   rowLabel,
   empty,
+  server,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -171,6 +185,11 @@ export function DataTable<T>({
   exportCsv?: TableExport<T>;
   pageSize?: number;
   loading?: boolean;
+  /**
+   * Server mode: `rows` is already the filtered, sorted page and `total` counts every match.
+   * Search, filters, sort and page then live in the address for the page's query to read.
+   */
+  server?: { total: number; exportHref?: string };
   syncUrl?: boolean;
   onRowClick?: (row: T) => void;
   rowClass?: (row: T) => string | undefined;
@@ -194,6 +213,7 @@ export function DataTable<T>({
   const narrowed = state.q.trim() !== '' || Object.values(state.filters).some(Boolean);
 
   const matching = useMemo(() => {
+    if (server) return rows;
     const terms = state.q.toLowerCase().split(/\s+/).filter(Boolean);
     const active = filters.filter((filter) => state.filters[filter.id]);
     let result = rows.filter((row) => {
@@ -222,9 +242,10 @@ export function DataTable<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, state.q, JSON.stringify(state.filters), sortColumn?.id, descending]);
 
-  const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
+  const total = server ? server.total : matching.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(state.page, pageCount);
-  const visible = matching.slice((page - 1) * pageSize, page * pageSize);
+  const visible = server ? rows : matching.slice((page - 1) * pageSize, page * pageSize);
 
   // Rows can leave the list under a selection (a batch action, a filter); count what is left.
   const chosen = matching.filter((row) => selected.has(rowKey(row)));
@@ -247,6 +268,11 @@ export function DataTable<T>({
   };
 
   const download = (list: T[]) => {
+    if (server?.exportHref && list === matching) {
+      // Every match, not only this page: the server writes the file with the same filters.
+      window.location.assign(server.exportHref);
+      return;
+    }
     if (!exportCsv) return;
     const stamp = new Date().toISOString().slice(0, 10);
     downloadCsv(`${exportCsv.name}-${stamp}.csv`, exportCsv.header, list.map(exportCsv.row));
@@ -313,11 +339,7 @@ export function DataTable<T>({
             </span>
           )}
           {mayExport && (
-            <Button
-              icon={Download}
-              disabled={matching.length === 0}
-              onClick={() => download(matching)}
-            >
+            <Button icon={Download} disabled={total === 0} onClick={() => download(matching)}>
               Export CSV
             </Button>
           )}
@@ -331,7 +353,7 @@ export function DataTable<T>({
               <span className="batch-count num" aria-live="polite">
                 <b>{chosen.length}</b> selected
               </span>
-              {chosen.length < matching.length && (
+              {!server && chosen.length < matching.length && (
                 <button
                   type="button"
                   className="link"
@@ -506,30 +528,10 @@ export function DataTable<T>({
       <TableFoot
         page={page}
         pageSize={pageSize}
-        total={matching.length}
+        total={total}
         noun={noun}
         onPage={(next) => change({ page: next === 1 ? '' : String(next) })}
       />
     </div>
   );
-}
-
-/**
- * Runs one store call per selected row and reports how many went through. A row the store
- * refuses (wrong status, already there) is skipped; the first refusal is quoted so the
- * user knows why the count is short.
- */
-export function runBatch<T>(rows: T[], each: (row: T) => void): { done: number; refused: string } {
-  let done = 0;
-  let refused = '';
-  for (const row of rows) {
-    try {
-      each(row);
-      done += 1;
-    } catch (error) {
-      if (!(error instanceof WmsError)) throw error;
-      if (!refused) refused = error.message;
-    }
-  }
-  return { done, refused };
 }

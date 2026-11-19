@@ -1,9 +1,30 @@
+import type {
+  BulkResult,
+  OrgType,
+  Transaction,
+  TransactionDetail,
+  TransactionStage,
+} from '@wms/contracts';
 import { Ban, Plus } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { apiSend, exportUrl } from '../api/client.js';
+import {
+  useAvailability,
+  useDebounced,
+  useInvalidate,
+  usePartners,
+  useStageCounts,
+  useTransactions,
+} from '../api/queries.js';
+import { useAuth, useReference } from '../auth/auth.js';
 import { DateField, Select, SuggestInput } from '../components/controls.js';
-import { DataTable, runBatch, type Column, type TableFilter } from '../components/DataTable.js';
+import {
+  DataTable,
+  readTableState,
+  type Column,
+  type TableFilter,
+} from '../components/DataTable.js';
 import { ActionDialog, ReasonDialog } from '../components/dialogs.js';
 import {
   Button,
@@ -14,41 +35,56 @@ import {
   useToast,
   type TabItem,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { daysOverdue, LOAN_STATUS_LABELS, modelAvailability } from '../data/selectors.js';
-import { WmsError } from '../data/store.js';
-import type { Loan } from '../data/types.js';
-import { addDays, daysBetween, formatDate, toDateKey } from '../lib/dates.js';
-import { usePageReady } from '../lib/hooks.js';
+import { addDays, daysBetween, formatDate } from '../lib/dates.js';
+import { STAGE_LABELS } from '../lib/labels.js';
 
 type TabId = 'requests' | 'on_demo' | 'returned' | 'all';
 
-const TAB_STATUSES: Record<TabId, Loan['status'][] | null> = {
+const TAB_STAGES: Record<TabId, TransactionStage[] | null> = {
   requests: ['pending', 'approved'],
   on_demo: ['released'],
   returned: ['returned'],
   all: null,
 };
 
+const PAGE_SIZE = 10;
+const FILTERS = ['company', 'due'] as const;
+
 function isTabId(value: string | null): value is TabId {
-  return value !== null && value in TAB_STATUSES;
+  return value !== null && value in TAB_STAGES;
 }
 
 export function Borrow() {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
   const toast = useToast();
   const { can } = useAuth();
   const navigate = useNavigate();
-  const ready = usePageReady();
+  const invalidate = useInvalidate();
   const [params, setParams] = useSearchParams();
-  const today = toDateKey(new Date());
-  const [rejecting, setRejecting] = useState<{ loans: Loan[]; clear: () => void } | null>(null);
+  const [rejecting, setRejecting] = useState<{ loans: Transaction[]; clear: () => void } | null>(
+    null,
+  );
 
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'requests';
   const creating = params.get('new') === '1';
+  const table = readTableState(params, FILTERS);
+  const q = useDebounced(table.q.trim());
+  const stages = TAB_STAGES[tab];
+  // Loans out: the most urgent return first, unless the person chose another order.
+  const sort =
+    'sort' in table.sort ? table.sort : tab === 'on_demo' ? { sort: 'dueDate', order: 'asc' } : {};
+  const query = {
+    page: table.page,
+    pageSize: PAGE_SIZE,
+    q: q || undefined,
+    stage: stages ?? undefined,
+    company: table.filters.company || undefined,
+    due: table.filters.due || undefined,
+    ...sort,
+  };
+  const list = useTransactions(query);
+  const counts = useStageCounts().data;
+  const companies = usePartners('').data ?? [];
 
   const update = (changes: Record<string, string>) => {
     const next = new URLSearchParams(params);
@@ -60,28 +96,21 @@ export function Borrow() {
   };
 
   const countFor = (id: TabId) => {
-    const statuses = TAB_STATUSES[id];
-    return statuses
-      ? state.loans.filter((loan) => statuses.includes(loan.status)).length
-      : state.loans.length;
+    if (!counts) return undefined;
+    const wanted = TAB_STAGES[id];
+    return (wanted ?? (Object.keys(counts) as TransactionStage[])).reduce(
+      (sum, stage) => sum + (counts[stage] ?? 0),
+      0,
+    );
   };
   const tabs: TabItem<TabId>[] = [
-    { id: 'requests', label: 'Requests', count: countFor('requests') },
-    { id: 'on_demo', label: 'On Demo', count: countFor('on_demo') },
-    { id: 'returned', label: 'Returned', count: countFor('returned') },
-    { id: 'all', label: 'All', count: countFor('all') },
+    { id: 'requests', label: 'Requests', count: countFor('requests') ?? 0 },
+    { id: 'on_demo', label: 'On Demo', count: countFor('on_demo') ?? 0 },
+    { id: 'returned', label: 'Returned', count: countFor('returned') ?? 0 },
+    { id: 'all', label: 'All', count: countFor('all') ?? 0 },
   ];
 
-  const rows = useMemo(() => {
-    const statuses = TAB_STATUSES[tab];
-    const list = state.loans.filter((loan) => !statuses || statuses.includes(loan.status));
-    // Loans out: the most urgent return first. Everything else: newest first.
-    return tab === 'on_demo'
-      ? list.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-      : list.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-  }, [state.loans, tab]);
-
-  const columns: Column<Loan>[] = [
+  const columns: Column<Transaction>[] = [
     {
       id: 'number',
       header: 'Transaction',
@@ -99,16 +128,16 @@ export function Borrow() {
       ),
     },
     {
-      id: 'borrower',
+      id: 'company',
       header: 'Borrower',
       width: '1.3fr',
       skeleton: 150,
-      sort: (loan) => loan.borrower.name,
+      sort: (loan) => loan.company.name,
       cell: (loan) => (
         <>
-          <span className="cell-main">{loan.borrower.name}</span>
+          <span className="cell-main">{loan.contact.name}</span>
           <span className="cell-sub" style={{ display: 'block' }}>
-            {loan.borrower.company}
+            {loan.company.name}
           </span>
         </>
       ),
@@ -118,60 +147,54 @@ export function Borrow() {
       header: 'Demo unit',
       width: '1.5fr',
       skeleton: 170,
-      sort: (loan) => `${loan.brand} ${loan.model}`,
       cell: (loan) => (
         <>
-          {loan.brand} {loan.model}
+          {loan.model.brand} {loan.model.name}
+          {loan.quantityRequested > 1 ? ` × ${loan.quantityRequested}` : ''}
           <span className="cell-sub mono" style={{ display: 'block' }}>
-            {loan.unitCode ?? 'Unit not assigned yet'}
+            {loan.unitCodes.length > 0 ? loan.unitCodes.join(', ') : 'Unit not assigned yet'}
           </span>
         </>
       ),
     },
     {
-      id: 'release',
+      id: 'neededFrom',
       header: 'Release',
       skeleton: 110,
       className: 'num',
-      sort: (loan) => loan.startDate,
-      cell: (loan) => formatDate(loan.startDate),
+      sort: (loan) => loan.neededFrom,
+      cell: (loan) => formatDate(loan.neededFrom),
     },
     {
-      id: 'due',
+      id: 'dueDate',
       header: 'Expected return',
       width: '0.9fr',
       skeleton: 90,
       className: 'num',
       sort: (loan) => loan.dueDate,
-      cell: (loan) => {
-        const late = daysOverdue(loan, today);
-        return (
-          <>
-            {formatDate(loan.dueDate)}
-            {late > 0 && <span className="late"> · {late}d late</span>}
-          </>
-        );
-      },
+      cell: (loan) => (
+        <>
+          {formatDate(loan.dueDate)}
+          {loan.daysOverdue > 0 && <span className="late"> · {loan.daysOverdue}d late</span>}
+        </>
+      ),
     },
     {
-      id: 'state',
+      id: 'stage',
       header: 'Status',
       width: '0.9fr',
       skeleton: 'chip',
-      sort: (loan) => LOAN_STATUS_LABELS[loan.status],
-      cell: (loan) => <LoanChip status={loan.status} />,
+      cell: (loan) => <LoanChip status={loan.stage} />,
     },
   ];
 
-  const filters: TableFilter<Loan>[] = [
+  const filters: TableFilter<Transaction>[] = [
     {
       id: 'company',
       label: 'Company',
       allLabel: 'All companies',
-      options: [...new Set(state.loans.map((loan) => loan.borrower.company))]
-        .sort((a, b) => a.localeCompare(b))
-        .map((company) => ({ value: company, label: company })),
-      test: (loan, value) => loan.borrower.company === value,
+      options: companies.map((company) => ({ value: company.id, label: company.name })),
+      test: () => true,
     },
     {
       id: 'due',
@@ -181,13 +204,11 @@ export function Borrow() {
         { value: 'overdue', label: 'Overdue' },
         { value: 'week', label: 'Due within 7 days' },
       ],
-      test: (loan, value) => {
-        if (loan.status !== 'released') return false;
-        const left = daysBetween(today, loan.dueDate);
-        return value === 'overdue' ? left < 0 : left >= 0 && left <= 7;
-      },
+      test: () => true,
     },
   ];
+
+  const { page: _page, pageSize: _size, ...exportFilters } = query;
 
   return (
     <div className="page">
@@ -215,20 +236,21 @@ export function Borrow() {
           {/* Keyed by tab: a selection made in one queue does not carry into another. */}
           <DataTable
             key={tab}
-            rows={rows}
+            rows={list.data?.items ?? []}
             columns={columns}
             rowKey={(loan) => loan.number}
             noun="transactions"
-            loading={!ready}
+            pageSize={PAGE_SIZE}
+            loading={list.isPending}
             syncUrl
-            search={{
-              placeholder: 'Search by transaction, borrower, company, or asset code…',
-              text: (loan) =>
-                `${loan.number} ${loan.borrower.name} ${loan.borrower.company} ${loan.unitCode ?? ''} ${loan.brand} ${loan.model}`,
+            server={{
+              total: list.data?.total ?? 0,
+              exportHref: exportUrl('/transactions/export.csv', exportFilters),
             }}
+            search={{ placeholder: 'Search by transaction, borrower or company…', text: () => '' }}
             filters={filters}
             onRowClick={(loan) => void navigate(`/borrow/${loan.number}`)}
-            rowClass={(loan) => (daysOverdue(loan, today) > 0 ? 'is-late' : undefined)}
+            rowClass={(loan) => (loan.isOverdue ? 'is-late' : undefined)}
             empty={{
               title: 'No transactions here',
               body: 'New requests appear in this list as soon as they are filed.',
@@ -253,21 +275,21 @@ export function Borrow() {
                 'Company',
                 'Brand',
                 'Model',
-                'Asset code',
+                'Asset codes',
                 'Release',
                 'Expected return',
                 'Status',
               ],
               row: (loan) => [
                 loan.number,
-                loan.borrower.name,
-                loan.borrower.company,
-                loan.brand,
-                loan.model,
-                loan.unitCode ?? '',
-                loan.startDate,
+                loan.contact.name,
+                loan.company.name,
+                loan.model.brand,
+                loan.model.name,
+                loan.unitCodes.join(' '),
+                loan.neededFrom,
                 loan.dueDate,
-                LOAN_STATUS_LABELS[loan.status],
+                STAGE_LABELS[loan.stage],
               ],
             }}
           />
@@ -284,17 +306,22 @@ export function Borrow() {
           confirmLabel="Reject requests"
           danger
           onClose={() => setRejecting(null)}
-          onConfirm={(reason) => {
-            const result = runBatch(rejecting.loans, (loan) =>
-              store.rejectRequest(user.username, loan.number, reason),
+          onConfirm={async (reason, key) => {
+            const { results } = await apiSend<BulkResult>(
+              'POST',
+              '/transactions/bulk-reject',
+              { numbers: rejecting.loans.map((loan) => loan.number), reason },
+              key,
             );
-            if (result.done === 0) throw new WmsError(result.refused);
-            const skipped = rejecting.loans.length - result.done;
-            toast(
-              skipped === 0
-                ? `${result.done} rejected`
-                : `${result.done} rejected, ${skipped} skipped`,
-            );
+            await invalidate('transactions', 'dashboard');
+            const done = results.filter((row) => row.ok).length;
+            const skipped = results.length - done;
+            if (done === 0) {
+              const first = results.find((row) => !row.ok);
+              toast(first && !first.ok ? first.message : 'Nothing was rejected', 'error');
+              return;
+            }
+            toast(skipped === 0 ? `${done} rejected` : `${done} rejected, ${skipped} skipped`);
             rejecting.clear();
           }}
         />
@@ -312,92 +339,148 @@ const PURPOSES = [
   'Presales lab test',
 ];
 
+const ORG_TYPES: { value: OrgType; label: string }[] = [
+  { value: 'partner', label: 'Partner' },
+  { value: 'reseller', label: 'Reseller' },
+  { value: 'internal_team', label: 'Internal team' },
+  { value: 'branch', label: 'Branch' },
+];
+
 function RequestDialog({ onClose }: { onClose: () => void }) {
-  const store = useStore();
-  const state = useWmsState();
-  const user = useCurrentUser();
+  const { models, settings, serverDate, categories } = useReference();
   const navigate = useNavigate();
   const toast = useToast();
-  const today = toDateKey(new Date());
+  const invalidate = useInvalidate();
+  const today = serverDate;
   /** Set once the request is filed: the page has moved on, so closing must not touch its URL. */
   const filed = useRef(false);
 
-  const models = useMemo(() => modelAvailability(state.units), [state.units]);
-  const [modelKey, setModelKey] = useState(models.find((item) => item.free > 0)?.key ?? '');
+  const bookable = models.filter((model) => model.isBookable);
+  const [modelId, setModelId] = useState(bookable[0]?.id ?? '');
+  const [quantity, setQuantity] = useState(1);
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
+  const [companyType, setCompanyType] = useState<OrgType>('partner');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [purpose, setPurpose] = useState(PURPOSES[0] ?? '');
+  const [endCustomer, setEndCustomer] = useState('');
   const [startDate, setStartDate] = useState(today);
-  const [dueDate, setDueDate] = useState(addDays(today, state.settings.defaultLoanDays));
+  const [dueDate, setDueDate] = useState(addDays(today, settings.defaultLoanDays - 1));
 
-  const chosen = models.find((item) => item.key === modelKey);
-  const length = startDate && dueDate ? daysBetween(startDate, dueDate) : 0;
-  const categoryName = new Map(state.categories.map((item) => [item.code, item.name]));
+  const partners = usePartners(company).data ?? [];
+  const known = partners.find((item) => item.name.toLowerCase() === company.trim().toLowerCase());
+  const settledFrom = useDebounced(startDate);
+  const settledUntil = useDebounced(dueDate);
+  const availability = useAvailability(settledFrom, settledUntil, true);
+  const freeFor = new Map((availability.data?.items ?? []).map((item) => [item.modelId, item]));
+  const chosen = freeFor.get(modelId);
+  const length = startDate && dueDate ? daysBetween(startDate, dueDate) + 1 : 0;
+  const categoryName = new Map(categories.map((item) => [item.id, item.name]));
 
-  /** Companies already on file, offered as suggestions so repeat borrowers are typed once. */
-  const knownBorrowers = useMemo(() => {
-    const seen = new Map<string, Loan['borrower']>();
-    for (const loan of state.loans) seen.set(loan.borrower.company, loan.borrower);
-    return seen;
-  }, [state.loans]);
+  const valid =
+    modelId !== '' &&
+    company.trim() !== '' &&
+    name.trim() !== '' &&
+    email.includes('@') &&
+    phone.trim().length >= 7 &&
+    length >= 1 &&
+    length <= settings.maxLoanDays;
 
   return (
     <ActionDialog
       title="New borrowing request"
-      description="The request goes to an approver, who assigns the physical unit."
+      description="The request goes to an approver, who assigns the physical units. Pending requests do not hold stock."
       confirmLabel="Submit request"
-      width={620}
+      width={640}
+      canConfirm={valid}
       onClose={() => {
         if (!filed.current) onClose();
       }}
-      onConfirm={() => {
-        const loan = store.createRequest(user.username, {
-          brand: chosen?.brand ?? '',
-          model: chosen?.model ?? '',
-          borrower: { name, company, email, phone },
-          purpose,
-          startDate,
-          dueDate,
-        });
+      onConfirm={async (key) => {
+        const created = await apiSend<TransactionDetail>(
+          'POST',
+          '/transactions',
+          {
+            company: known ? { id: known.id } : { name: company.trim(), type: companyType },
+            contact: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+            modelId,
+            quantity,
+            neededFrom: startDate,
+            neededUntil: dueDate,
+            purpose,
+            endCustomer: endCustomer.trim() || null,
+          },
+          key,
+        );
         filed.current = true;
-        toast(`${loan.number} submitted for approval`);
-        void navigate(`/borrow/${loan.number}`);
+        await invalidate('transactions', 'dashboard');
+        toast(`${created.number} submitted for approval`);
+        void navigate(`/borrow/${created.number}`);
       }}
     >
       <div className="form-grid cols-2">
         <Field
           label="Model requested"
-          hint={chosen ? `${chosen.free} of ${chosen.total} units free right now` : undefined}
+          hint={
+            chosen
+              ? `${chosen.unitsFree} of ${chosen.unitsTotal} units free for these dates (subject to approval)`
+              : undefined
+          }
           className="span-2"
         >
           <Select
-            value={modelKey}
-            onChange={setModelKey}
-            options={models.map((item) => ({
-              value: item.key,
-              label: `${item.brand} ${item.model}`,
-              hint: `${categoryName.get(item.categoryCode) ?? item.categoryCode} · ${item.free} free`,
-            }))}
+            value={modelId}
+            onChange={setModelId}
+            options={bookable.map((model) => {
+              const free = freeFor.get(model.id);
+              return {
+                value: model.id,
+                label: `${model.brand} ${model.name}`,
+                hint: `${categoryName.get(model.category.id) ?? model.category.code}${free ? ` · ${free.unitsFree} free` : ''}`,
+              };
+            })}
           />
         </Field>
-        <Field label="Company">
+        <Field
+          label="Company"
+          hint={known ? 'On file' : company.trim() ? 'New company: choose its type' : undefined}
+        >
           <SuggestInput
             value={company}
             placeholder="ABC Technologies Inc."
-            suggestions={[...knownBorrowers.keys()]}
-            onChange={(value) => {
-              setCompany(value);
-              const known = knownBorrowers.get(value);
-              if (known) {
-                setName(known.name);
-                setEmail(known.email);
-                setPhone(known.phone);
-              }
-            }}
+            suggestions={partners.map((item) => item.name)}
+            onChange={setCompany}
           />
         </Field>
+        {!known && company.trim() !== '' && (
+          <Field label="Company type">
+            <Select
+              value={companyType}
+              onChange={(value) => setCompanyType(value as OrgType)}
+              options={ORG_TYPES}
+            />
+          </Field>
+        )}
+        {
+          <Field label="Units">
+            <input
+              className="input num"
+              type="number"
+              min={1}
+              max={settings.maxUnitsPerRequest}
+              value={quantity}
+              onChange={(event) =>
+                setQuantity(
+                  Math.max(
+                    1,
+                    Math.min(settings.maxUnitsPerRequest, Number(event.target.value) || 1),
+                  ),
+                )
+              }
+            />
+          </Field>
+        }
         <Field label="Borrower name">
           <input
             className="input"
@@ -424,6 +507,14 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
             autoComplete="off"
           />
         </Field>
+        <Field label="End customer" hint="Optional">
+          <input
+            className="input"
+            value={endCustomer}
+            onChange={(event) => setEndCustomer(event.target.value)}
+            autoComplete="off"
+          />
+        </Field>
         <Field label="Purpose" className="span-2">
           <Select
             value={purpose}
@@ -443,7 +534,7 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
           label="Expected return"
           hint={
             length > 0
-              ? `${length} day${length === 1 ? '' : 's'} · maximum ${state.settings.maxLoanDays}`
+              ? `${length} day${length === 1 ? '' : 's'} · maximum ${settings.maxLoanDays}`
               : undefined
           }
         >

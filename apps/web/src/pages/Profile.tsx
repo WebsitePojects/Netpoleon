@@ -1,18 +1,13 @@
-import { SkPage } from '../components/controls.js';
-import { Info, Monitor, Moon, Sun } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
-import { useCurrentUser } from '../auth/auth.js';
+import { ACTION_LABELS, ROLE_LABELS, ROLE_SUMMARIES } from '@wms/contracts';
+import { Monitor, Moon, Sun } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
+import { apiSend, newIntentKey } from '../api/client.js';
+import { useAudit } from '../api/queries.js';
+import { useCurrentUser, useReference } from '../auth/auth.js';
 import { Avatar, Button, Field, FormError, PageHead, useToast } from '../components/ui.js';
-import { useWmsState } from '../data/context.js';
-import {
-  ACTION_LABELS,
-  can,
-  ROLE_LABELS,
-  ROLE_SUMMARIES,
-  type Action,
-} from '../data/permissions.js';
 import { formatDateTime } from '../lib/dates.js';
-import { usePageReady, useSubmit, useTheme, type ThemeChoice } from '../lib/hooks.js';
+import { useSubmit, useTheme, type ThemeChoice } from '../lib/hooks.js';
+import { describeEntry } from './Users.js';
 
 const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { id: 'light', label: 'Light', icon: Sun },
@@ -23,9 +18,10 @@ const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
 const RECENT_ACTIONS = 8;
 
 export function Profile() {
-  const ready = usePageReady();
   const user = useCurrentUser();
-  const { audit, settings } = useWmsState();
+  const { settings, permissions } = useReference();
+  const audit = useAudit({ actor: 'me' });
+  const intent = useRef(newIntentKey());
   const [theme, setTheme] = useTheme();
   const toast = useToast();
   const submit = useSubmit();
@@ -33,17 +29,8 @@ export function Profile() {
   const [next, setNext] = useState('');
   const [mismatch, setMismatch] = useState<string | null>(null);
 
-  const mine = useMemo(
-    () =>
-      audit
-        .filter((entry) => entry.actor === user.username)
-        .slice(-RECENT_ACTIONS)
-        .reverse(),
-    [audit, user.username],
-  );
-  const allowed = (Object.keys(ACTION_LABELS) as Action[]).filter((action) =>
-    can(user.role, action),
-  );
+  const mine = (audit.data?.pages[0]?.items ?? []).slice(0, RECENT_ACTIONS);
+  const allowed = permissions;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -52,19 +39,24 @@ export function Profile() {
       return;
     }
     setMismatch(null);
-    void submit.run(() => {
+    void submit.run(async () => {
+      await apiSend(
+        'POST',
+        '/auth/password',
+        { currentPassword: current, newPassword: next },
+        intent.current,
+      );
+      intent.current = newIntentKey();
       setCurrent('');
       setNext('');
-      toast('Demo build: the password was not changed');
+      toast('Password changed. Other devices were signed out.');
     });
   };
 
   return (
     <div className="page">
       <PageHead title="My profile" lead="Your account, appearance and recent activity" />
-      {!ready ? (
-        <SkPage kind="profile" />
-      ) : (
+      {
         <div className="grid-2 even">
           <div className="stack">
             <section className="card card-pad">
@@ -95,7 +87,7 @@ export function Profile() {
                 </div>
                 <div>
                   <dt>Last sign-in</dt>
-                  <dd className="num">{formatDateTime(user.lastActiveAt)}</dd>
+                  <dd className="num">{formatDateTime(user.lastLoginAt)}</dd>
                 </div>
               </dl>
             </section>
@@ -140,10 +132,6 @@ export function Profile() {
                 Change password
               </h2>
               <form className="form-grid" onSubmit={onSubmit} noValidate>
-                <p className="banner info" role="note">
-                  <Info aria-hidden="true" />
-                  Demo build: passwords are fixed sample data, so this form saves nothing.
-                </p>
                 <Field label="Current password">
                   <input
                     className="input"
@@ -198,8 +186,7 @@ export function Profile() {
                       <span>
                         <strong className="mono">{entry.action}</strong>
                         <span className="cell-sub" style={{ display: 'block' }}>
-                          {entry.target}
-                          {entry.detail ? ` · ${entry.detail}` : ''}
+                          {describeEntry(entry)}
                         </span>
                       </span>
                       <time dateTime={entry.at}>{formatDateTime(entry.at)}</time>
@@ -210,7 +197,7 @@ export function Profile() {
             </section>
           </div>
         </div>
-      )}
+      }
     </div>
   );
 }

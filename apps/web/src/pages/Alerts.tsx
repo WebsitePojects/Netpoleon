@@ -1,33 +1,40 @@
-import { usePageReady } from '../lib/hooks.js';
-import { SkPage } from '../components/controls.js';
+import { ALERT_KINDS, type AlertKind } from '@wms/contracts';
 import { Bell, Check } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useRef, useState } from 'react';
+import { apiSend, newIntentKey } from '../api/client.js';
+import { useAlerts, useInvalidate } from '../api/queries.js';
+import { SkPage } from '../components/controls.js';
 import { Button, Empty, PageHead, Tabs, order, type TabItem } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { ALERT_TITLES, buildAlerts, type AlertKind } from '../data/selectors.js';
+import { ALERT_TITLES } from '../lib/labels.js';
+import { useSubmit } from '../lib/hooks.js';
 import { AlertCard } from './Dashboard.js';
 
 type TabId = 'all' | AlertKind;
 
-const KINDS: AlertKind[] = ['overdue', 'missing_accessory', 'for_inspection', 'ready'];
-
 export function Alerts() {
-  const ready = usePageReady();
-  const state = useWmsState();
-  const store = useStore();
+  const query = useAlerts();
+  const invalidate = useInvalidate();
+  const submit = useSubmit();
+  const intent = useRef(newIntentKey());
   const [tab, setTab] = useState<TabId>('all');
-  const alerts = useMemo(() => buildAlerts(state, new Date()), [state]);
+  const alerts = query.data?.items ?? [];
 
   const tabs: TabItem<TabId>[] = [
     { id: 'all', label: 'All', count: alerts.length },
-    ...KINDS.map((kind) => ({
+    ...ALERT_KINDS.map((kind) => ({
       id: kind,
       label: ALERT_TITLES[kind],
-      count: alerts.filter((alert) => alert.kind === kind).length,
+      count: query.data?.counts[kind] ?? 0,
     })),
   ];
   const visible = tab === 'all' ? alerts : alerts.filter((alert) => alert.kind === tab);
   const unread = visible.filter((alert) => !alert.read);
+
+  const markRead = (keys: string[], key: string) =>
+    submit.run(async () => {
+      await apiSend('POST', '/alerts/read', { keys }, key);
+      await invalidate('alerts', 'dashboard');
+    });
 
   return (
     <div className="page">
@@ -38,13 +45,21 @@ export function Alerts() {
           <Button
             icon={Check}
             disabled={unread.length === 0}
-            onClick={() => store.markAlertsRead(unread.map((alert) => alert.id))}
+            pending={submit.pending}
+            onClick={() => {
+              void markRead(
+                unread.slice(0, 200).map((alert) => alert.key),
+                intent.current,
+              ).then(() => {
+                intent.current = newIntentKey();
+              });
+            }}
           >
             Mark {unread.length > 0 ? unread.length : 'all'} as read
           </Button>
         }
       />
-      {!ready ? (
+      {query.isPending ? (
         <SkPage kind="alerts" />
       ) : (
         <div className="stack">
@@ -59,10 +74,13 @@ export function Alerts() {
             <div className="alert-grid stagger" key={tab}>
               {visible.map((alert, index) => (
                 <div
-                  key={alert.id}
+                  key={alert.key}
                   // Cap the stagger: with dozens of cards the last one should not wait seconds.
                   style={order(Math.min(index, 12))}
-                  onClick={() => store.markAlertsRead([alert.id])}
+                  onClick={() => {
+                    if (!alert.read)
+                      void markRead([alert.key], `read-${alert.key}-${newIntentKey().slice(0, 8)}`);
+                  }}
                 >
                   <AlertCard alert={alert} />
                 </div>

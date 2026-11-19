@@ -1,9 +1,18 @@
+import type {
+  ConditionGrade,
+  InspectionChecklist,
+  InspectionQueue,
+  InspectionQueueItem,
+  Unit,
+} from '@wms/contracts';
 import { ClipboardCheck, PackageCheck, SearchCheck, Wrench } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
-import { CONDITION_OPTIONS, Select, SkTable } from '../components/controls.js';
-import { ActionDialog, ShelfDialog, ShelfSelect } from '../components/dialogs.js';
+import { apiSend, newIntentKey } from '../api/client.js';
+import { useInspectionQueue, useInvalidate } from '../api/queries.js';
+import { useAuth } from '../auth/auth.js';
+import { Select, SkTable } from '../components/controls.js';
+import { ActionDialog, ReasonDialog, ShelfSelect } from '../components/dialogs.js';
 import {
   Button,
   CategoryThumb,
@@ -11,30 +20,25 @@ import {
   Field,
   PageHead,
   StatusChip,
+  TableFoot,
   Tabs,
   useToast,
   type TabItem,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { missingAccessories } from '../data/selectors.js';
-import type {
-  ConditionGrade,
-  InspectionChecklist,
-  InspectionOutcome,
-  Loan,
-  Unit,
-  UnitStatus,
-} from '../data/types.js';
 import { formatDate } from '../lib/dates.js';
-import { usePageReady, useSubmit } from '../lib/hooks.js';
+import { useSubmit } from '../lib/hooks.js';
+import { CONDITION_OPTIONS } from './Units.js';
 
 type TabId = 'awaiting' | 'inspecting' | 'repair';
+type Outcome = 'restock' | 'reassign' | 'repair' | 'retire';
 
-const TAB_STATUS: Record<TabId, UnitStatus> = {
+const TAB_STATUS: Record<TabId, InspectionQueue> = {
   awaiting: 'returned',
   inspecting: 'under_inspection',
   repair: 'for_repair',
 };
+
+const PAGE_SIZE = 15;
 
 const CHECKS: { key: keyof InspectionChecklist; label: string }[] = [
   { key: 'powersOn', label: 'Powers on and boots' },
@@ -44,10 +48,11 @@ const CHECKS: { key: keyof InspectionChecklist; label: string }[] = [
   { key: 'accessoriesComplete', label: 'Accessories complete' },
 ];
 
-const OUTCOMES: { id: InspectionOutcome; label: string; detail: string }[] = [
+const OUTCOMES: { id: Outcome; label: string; detail: string }[] = [
   { id: 'restock', label: 'Restock', detail: 'Good unit, back to its shelf' },
   { id: 'reassign', label: 'Reassign', detail: 'Good unit, to another shelf or team' },
   { id: 'repair', label: 'Send to repair', detail: 'Has a fault to fix first' },
+  { id: 'retire', label: 'Retire', detail: 'Not worth repairing' },
 ];
 
 function isTabId(value: string | null): value is TabId {
@@ -55,44 +60,37 @@ function isTabId(value: string | null): value is TabId {
 }
 
 export function Inspection() {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
   const { can } = useAuth();
   const toast = useToast();
-  const ready = usePageReady();
+  const invalidate = useInvalidate();
   const [params, setParams] = useSearchParams();
-  const [inspecting, setInspecting] = useState<Unit | null>(null);
+  const [inspecting, setInspecting] = useState<InspectionQueueItem | null>(null);
   const [repaired, setRepaired] = useState<Unit | null>(null);
 
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'awaiting';
+  const page = Math.max(1, Number(params.get('page')) || 1);
+  const queue = useInspectionQueue({ status: TAB_STATUS[tab], page, pageSize: PAGE_SIZE });
   const mayInspect = can('inspection.perform');
+  const counts = queue.data?.counts;
 
-  const count = (id: TabId) => state.units.filter((unit) => unit.status === TAB_STATUS[id]).length;
   const tabs: TabItem<TabId>[] = [
-    { id: 'awaiting', label: 'Awaiting inspection', count: count('awaiting') },
-    { id: 'inspecting', label: 'Under inspection', count: count('inspecting') },
-    { id: 'repair', label: 'For repair', count: count('repair') },
+    { id: 'awaiting', label: 'Awaiting inspection', count: counts?.returned ?? 0 },
+    { id: 'inspecting', label: 'Under inspection', count: counts?.under_inspection ?? 0 },
+    { id: 'repair', label: 'For repair', count: counts?.for_repair ?? 0 },
   ];
+  const items = queue.data?.items ?? [];
 
-  const units = useMemo(
-    () => state.units.filter((unit) => unit.status === TAB_STATUS[tab]),
-    [state.units, tab],
-  );
-  /** The return still waiting on an inspection result, per unit. */
-  const openReturn = useMemo(() => {
-    const byUnit = new Map<string, Loan>();
-    for (const loan of state.loans) {
-      if (loan.status === 'returned' && loan.unitCode) byUnit.set(loan.unitCode, loan);
-    }
-    return byUnit;
-  }, [state.loans]);
-  const lastNote = useMemo(() => {
-    const byUnit = new Map<string, string>();
-    for (const movement of state.movements) byUnit.set(movement.unitCode, movement.note);
-    return byUnit;
-  }, [state.movements]);
+  const refresh = () =>
+    invalidate(
+      'inspections',
+      'units',
+      'unit',
+      'transactions',
+      'transaction',
+      'dashboard',
+      'alerts',
+    );
 
   return (
     <div className="page">
@@ -110,62 +108,60 @@ export function Inspection() {
         />
 
         <div className="card table-card">
-          {!ready ? (
+          {queue.isPending ? (
             <SkTable
               template="1.3fr 1.5fr 1fr 1fr 1.1fr"
               cells={['thumb', 150, 'chip', 100, 120]}
               rows={6}
             />
-          ) : units.length === 0 ? (
+          ) : items.length === 0 ? (
             <Empty title="This queue is empty" icon={ClipboardCheck}>
               {tab === 'awaiting'
                 ? 'Returned units appear here as soon as they are received.'
                 : 'Nothing is waiting at this step.'}
             </Empty>
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Unit</th>
-                  <th>Brand / Model</th>
-                  <th>{tab === 'repair' ? 'Fault' : 'Returned by'}</th>
-                  <th>{tab === 'repair' ? 'Status' : 'Returned'}</th>
-                  <th>Accessories</th>
-                  <th className="right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {units.map((unit) => {
-                  const loan = openReturn.get(unit.code);
-                  const missing = loan ? missingAccessories(loan) : [];
-                  return (
-                    <tr key={unit.code}>
+            <>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Unit</th>
+                    <th>Brand / Model</th>
+                    <th>{tab === 'repair' ? 'Fault' : 'Returned by'}</th>
+                    <th>{tab === 'repair' ? 'Status' : 'Returned'}</th>
+                    <th>Accessories</th>
+                    <th className="right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.unit.code}>
                       <td data-label="Unit">
                         <span className="unit-cell">
-                          <CategoryThumb unit={unit} />
-                          <Link to={`/units/${unit.code}`} className="row-link mono">
-                            {unit.code}
+                          <CategoryThumb unit={item.unit} />
+                          <Link to={`/units/${item.unit.code}`} className="row-link mono">
+                            {item.unit.code}
                           </Link>
                         </span>
                       </td>
                       <td data-label="Brand / Model">
-                        {unit.brand} {unit.model}
+                        {item.unit.brand} {item.unit.model}
                       </td>
                       <td data-label={tab === 'repair' ? 'Fault' : 'Returned by'}>
-                        {tab === 'repair'
-                          ? (lastNote.get(unit.code) ?? '—')
-                          : (loan?.borrower.company ?? '—')}
+                        {tab === 'repair' ? (item.note ?? '—') : (item.company ?? '—')}
                       </td>
                       <td data-label={tab === 'repair' ? 'Status' : 'Returned'} className="num">
                         {tab === 'repair' ? (
-                          <StatusChip status={unit.status} />
+                          <StatusChip status={item.unit.status} />
                         ) : (
-                          formatDate(loan?.returnedAt ?? null)
+                          formatDate(item.returnedAt)
                         )}
                       </td>
                       <td data-label="Accessories">
-                        {missing.length > 0 ? (
-                          <span className="late">Missing {missing.join(', ').toLowerCase()}</span>
+                        {item.missingAccessories.length > 0 ? (
+                          <span className="late">
+                            Missing {item.missingAccessories.join(', ').toLowerCase()}
+                          </span>
                         ) : (
                           'Complete'
                         )}
@@ -173,9 +169,15 @@ export function Inspection() {
                       <td data-label="" className="right">
                         {mayInspect && tab === 'awaiting' && (
                           <StartButton
-                            onStart={() => {
-                              store.startInspection(user.username, unit.code);
-                              toast(`${unit.code} moved to the QA Area`);
+                            onStart={async (key) => {
+                              await apiSend(
+                                'POST',
+                                `/units/${item.unit.code}/inspection/start`,
+                                {},
+                                key,
+                              );
+                              await refresh();
+                              toast(`${item.unit.code} moved to inspection`);
                             }}
                           />
                         )}
@@ -184,7 +186,7 @@ export function Inspection() {
                             size="sm"
                             variant="primary"
                             icon={ClipboardCheck}
-                            onClick={() => setInspecting(unit)}
+                            onClick={() => setInspecting(item)}
                           >
                             Record result
                           </Button>
@@ -194,41 +196,52 @@ export function Inspection() {
                             size="sm"
                             variant="primary"
                             icon={Wrench}
-                            onClick={() => setRepaired(unit)}
+                            onClick={() => setRepaired(item.unit)}
                           >
                             Repair complete
                           </Button>
                         )}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+              <TableFoot
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={queue.data?.total ?? 0}
+                noun="units"
+                onPage={(next) =>
+                  setParams({ tab, ...(next > 1 ? { page: String(next) } : {}) }, { replace: true })
+                }
+              />
+            </>
           )}
         </div>
       </div>
 
       {inspecting && (
         <InspectDialog
-          unit={inspecting}
-          accessoriesComplete={(() => {
-            const loan = openReturn.get(inspecting.code);
-            return loan ? missingAccessories(loan).length === 0 : true;
-          })()}
+          item={inspecting}
           onClose={() => setInspecting(null)}
+          onDone={async (message) => {
+            await refresh();
+            toast(message);
+          }}
         />
       )}
       {repaired && (
-        <ShelfDialog
+        <ReasonDialog
           title="Repair complete"
-          description={`Choose the shelf ${repaired.code} goes back to.`}
-          confirmLabel="Restock unit"
-          currentId=""
+          description={`${repaired.code} goes back through inspection before it returns to a shelf.`}
+          label="What was done?"
+          placeholder="Replaced fan, re-flashed firmware…"
+          confirmLabel="Send to inspection"
           onClose={() => setRepaired(null)}
-          onConfirm={(locationId) => {
-            store.completeRepair(user.username, repaired.code, locationId, '');
-            toast(`${repaired.code} repaired and restocked`);
+          onConfirm={async (note, key) => {
+            await apiSend('POST', `/units/${repaired.code}/repair-complete`, { note }, key);
+            await refresh();
+            toast(`${repaired.code} is waiting for inspection`);
           }}
         />
       )}
@@ -236,10 +249,11 @@ export function Inspection() {
   );
 }
 
-/** Row action with its own guard, so a double click starts one inspection, not two. */
-function StartButton({ onStart }: { onStart: () => void }) {
+/** Row action with its own guard and intent key, so a double click starts one inspection. */
+function StartButton({ onStart }: { onStart: (key: string) => Promise<void> }) {
   const submit = useSubmit();
   const toast = useToast();
+  const key = useRef(newIntentKey());
   // A row has no room for an inline error, so a refused start is reported as a toast.
   useEffect(() => {
     if (submit.error) toast(submit.error, 'error');
@@ -251,7 +265,7 @@ function StartButton({ onStart }: { onStart: () => void }) {
       icon={SearchCheck}
       pending={submit.pending}
       onClick={() => {
-        void submit.run(onStart);
+        void submit.run(() => onStart(key.current));
       }}
     >
       Start inspection
@@ -260,48 +274,28 @@ function StartButton({ onStart }: { onStart: () => void }) {
 }
 
 function InspectDialog({
-  unit,
-  accessoriesComplete,
+  item,
   onClose,
+  onDone,
 }: {
-  unit: Unit;
-  accessoriesComplete: boolean;
+  item: InspectionQueueItem;
   onClose: () => void;
+  onDone: (message: string) => Promise<void>;
 }) {
-  const store = useStore();
-  const state = useWmsState();
-  const user = useCurrentUser();
-  const toast = useToast();
-
+  const { unit } = item;
   const [grade, setGrade] = useState<ConditionGrade>(unit.condition);
   const [checklist, setChecklist] = useState<InspectionChecklist>({
     powersOn: true,
     portsWork: true,
     noPhysicalDamage: true,
     factoryReset: true,
-    accessoriesComplete,
+    accessoriesComplete: item.missingAccessories.length === 0,
   });
-  const [outcome, setOutcome] = useState<InspectionOutcome>('restock');
+  const [outcome, setOutcome] = useState<Outcome>('restock');
   const [notes, setNotes] = useState('');
-  // Default to a shelf in the unit's own aisle: the zone letter is shared by category.
-  const homeShelf = useMemo(() => {
-    const previous = [...state.movements]
-      .reverse()
-      .find((movement) => movement.unitCode === unit.code && /Shelf [A-Z]-\d+/.test(movement.note));
-    const name = previous?.note.match(/Shelf [A-Z]-\d+/)?.[0];
-    const shelves = state.locations.filter((item) => item.kind === 'shelf');
-    const sameCategory = state.units.find(
-      (other) => other.categoryCode === unit.categoryCode && other.status === 'in_stock',
-    );
-    return (
-      shelves.find((item) => item.name === name)?.id ??
-      shelves.find((item) => item.id === sameCategory?.locationId)?.id ??
-      shelves[0]?.id ??
-      ''
-    );
-  }, [state.movements, state.locations, state.units, unit]);
-  const [locationId, setLocationId] = useState(homeShelf);
-
+  // The shelf the unit last stood on is the natural place to put it back.
+  const [locationId, setLocationId] = useState(item.lastShelfId ?? '');
+  const needsShelf = outcome === 'restock' || outcome === 'reassign';
   const failed = Object.values(checklist).filter((passed) => !passed).length;
 
   return (
@@ -310,19 +304,24 @@ function InspectDialog({
       description={`${unit.brand} ${unit.model} · serial ${unit.serial}`}
       confirmLabel="Record inspection"
       width={600}
+      canConfirm={needsShelf ? locationId !== '' : notes.trim() !== ''}
       onClose={onClose}
-      onConfirm={() => {
-        store.recordInspection(user.username, unit.code, {
-          grade,
-          checklist,
-          notes,
-          outcome,
-          locationId: outcome === 'repair' ? null : locationId,
-        });
-        toast(
+      onConfirm={async (key) => {
+        const base = { grade, checklist, notes: notes.trim() || null };
+        await apiSend(
+          'POST',
+          `/units/${unit.code}/inspection`,
+          needsShelf
+            ? { ...base, outcome, locationId }
+            : { ...base, outcome, reason: notes.trim() },
+          key,
+        );
+        await onDone(
           outcome === 'repair'
             ? `${unit.code} tagged for repair`
-            : `${unit.code} is available for redeployment`,
+            : outcome === 'retire'
+              ? `${unit.code} retired`
+              : `${unit.code} is available for redeployment`,
         );
       }}
     >
@@ -343,7 +342,7 @@ function InspectDialog({
           </label>
         ))}
       </fieldset>
-      {failed > 0 && outcome !== 'repair' && (
+      {failed > 0 && needsShelf && (
         <p className="banner" role="status">
           <PackageCheck aria-hidden="true" />
           {failed} check{failed === 1 ? '' : 's'} failed. Restocking is still allowed; say why in
@@ -360,28 +359,36 @@ function InspectDialog({
       <div>
         <span className="label">Outcome</span>
         <div className="choice-grid" role="group" aria-label="Outcome" style={{ marginTop: 6 }}>
-          {OUTCOMES.map((item) => (
+          {OUTCOMES.map((choice) => (
             <button
-              key={item.id}
+              key={choice.id}
               type="button"
               className="choice"
-              aria-pressed={outcome === item.id}
-              onClick={() => setOutcome(item.id)}
+              aria-pressed={outcome === choice.id}
+              onClick={() => setOutcome(choice.id)}
             >
-              <strong>{item.label}</strong>
-              <span>{item.detail}</span>
+              <strong>{choice.label}</strong>
+              <span>{choice.detail}</span>
             </button>
           ))}
         </div>
       </div>
-      {outcome !== 'repair' && (
+      {needsShelf && (
         <ShelfSelect
           value={locationId}
           onChange={setLocationId}
           label={outcome === 'reassign' ? 'Reassign to' : 'Restock on'}
         />
       )}
-      <Field label={outcome === 'repair' ? 'Fault description' : 'Notes (optional)'}>
+      <Field
+        label={
+          needsShelf
+            ? 'Notes (optional)'
+            : outcome === 'repair'
+              ? 'Fault description'
+              : 'Reason for retiring'
+        }
+      >
         <textarea
           className="textarea"
           value={notes}

@@ -1,6 +1,7 @@
 import { CircleCheck, ScanLine } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { useWmsState } from '../data/context.js';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { newIntentKey } from '../api/client.js';
+import { useReference } from '../auth/auth.js';
 import { useSubmit } from '../lib/hooks.js';
 import { Select } from './controls.js';
 import { Button, Dialog, Field, FormError } from './ui.js';
@@ -28,20 +29,27 @@ export function ActionDialog({
   width,
   children,
 }: BaseProps & {
-  /** Throws `WmsError` to keep the dialog open and show the message. */
-  onConfirm: () => void;
+  /**
+   * Runs the change. `key` is this dialog's Idempotency-Key: made once when it opens and reused
+   * for every retry, so pressing again after a timeout replays instead of repeating the change.
+   * A rejected promise keeps the dialog open and shows the message.
+   */
+  onConfirm: (key: string) => Promise<unknown> | void;
   canConfirm?: boolean;
   width?: number;
   children?: ReactNode;
 }) {
   const submit = useSubmit();
+  const intentKey = useRef(newIntentKey());
   const formId = `action-${title.replace(/\W+/g, '-').toLowerCase()}`;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    void submit.run(onConfirm).then((done) => {
-      if (done) onClose();
-    });
+    void submit
+      .run(() => onConfirm(intentKey.current))
+      .then((done) => {
+        if (done) onClose();
+      });
   };
 
   return (
@@ -81,12 +89,16 @@ export function ReasonDialog({
   placeholder,
   onConfirm,
   ...base
-}: BaseProps & { label: string; placeholder?: string; onConfirm: (reason: string) => void }) {
+}: BaseProps & {
+  label: string;
+  placeholder?: string;
+  onConfirm: (reason: string, key: string) => Promise<unknown> | void;
+}) {
   const [reason, setReason] = useState('');
   return (
     <ActionDialog
       {...base}
-      onConfirm={() => onConfirm(reason)}
+      onConfirm={(key) => onConfirm(reason.trim(), key)}
       canConfirm={reason.trim().length > 0}
     >
       <Field label={label}>
@@ -110,7 +122,7 @@ export function ShelfSelect({
   onChange: (id: string) => void;
   label?: string;
 }) {
-  const { locations } = useWmsState();
+  const { locations } = useReference();
   return (
     <Field label={label}>
       <Select
@@ -118,7 +130,7 @@ export function ShelfSelect({
         onChange={onChange}
         options={locations
           .filter((item) => item.kind === 'shelf')
-          .map((item) => ({ value: item.id, label: item.name, hint: item.zone }))}
+          .map((item) => ({ value: item.id, label: item.name, hint: item.roomName ?? '' }))}
       />
     </Field>
   );
@@ -128,13 +140,16 @@ export function ShelfDialog({
   currentId,
   onConfirm,
   ...base
-}: BaseProps & { currentId: string; onConfirm: (locationId: string) => void }) {
-  const { locations } = useWmsState();
+}: BaseProps & {
+  currentId: string;
+  onConfirm: (locationId: string, key: string) => Promise<unknown> | void;
+}) {
+  const { locations } = useReference();
   const shelves = locations.filter((item) => item.kind === 'shelf');
   const initial = shelves.find((item) => item.id === currentId) ?? shelves[0];
   const [locationId, setLocationId] = useState(initial?.id ?? '');
   return (
-    <ActionDialog {...base} onConfirm={() => onConfirm(locationId)}>
+    <ActionDialog {...base} onConfirm={(key) => onConfirm(locationId, key)}>
       <ShelfSelect value={locationId} onChange={setLocationId} />
     </ActionDialog>
   );
@@ -171,12 +186,6 @@ export function ScanField({
             onChange={(event) => onChange(event.target.value)}
           />
         </label>
-        <Button
-          onClick={() => onChange(expected)}
-          title="Stands in for a handheld scanner in the demo"
-        >
-          Simulate scan
-        </Button>
       </div>
       {matches ? (
         <span className="scan-ok" role="status">

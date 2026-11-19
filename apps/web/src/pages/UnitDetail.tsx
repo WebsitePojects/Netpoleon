@@ -1,9 +1,12 @@
+import type { ConditionGrade, Movement, Unit, UnitDetail as UnitDetailData } from '@wms/contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import { Archive, MapPin, Pencil, Printer, Wrench } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { usePageReady } from '../lib/hooks.js';
-import { SkPage } from '../components/controls.js';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
+import { ApiError, apiGet, apiSend } from '../api/client.js';
+import { keys, useInvalidate, useTransactions, useUnit } from '../api/queries.js';
+import { useAuth, useReference } from '../auth/auth.js';
+import { Select, SkPage } from '../components/controls.js';
 import { ActionDialog, ReasonDialog, ShelfDialog } from '../components/dialogs.js';
 import { QrCode } from '../components/QrCode.js';
 import {
@@ -15,85 +18,120 @@ import {
   StatusChip,
   useToast,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { MOVEMENT_LABELS, STATUS_LABELS } from '../data/selectors.js';
-import type { Unit } from '../data/types.js';
 import { formatDate, formatDateTime } from '../lib/dates.js';
+import { CONDITION_LABELS, MOVEMENT_LABELS } from '../lib/labels.js';
 import { NotFound } from './NotFound.js';
+import { CONDITION_OPTIONS } from './Units.js';
 
 type Open = 'edit' | 'move' | 'repair' | 'repaired' | 'retire' | null;
 
-const CONDITION_LABELS = { A: 'A · Like new', B: 'B · Light wear', C: 'C · Heavy wear' } as const;
-
 export function UnitDetail() {
-  const ready = usePageReady();
   const { code = '' } = useParams();
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
+  const { categories, settings } = useReference();
   const { can } = useAuth();
   const toast = useToast();
+  const client = useQueryClient();
+  const invalidate = useInvalidate();
   const [open, setOpen] = useState<Open>(null);
+  const [older, setOlder] = useState<{ items: Movement[]; cursor: string | null } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
-  const unit = state.units.find((item) => item.code === code);
-  const history = useMemo(
-    () => state.movements.filter((movement) => movement.unitCode === code).reverse(),
-    [state.movements, code],
-  );
-  const loans = useMemo(
-    () => state.loans.filter((loan) => loan.unitCode === code).reverse(),
-    [state.loans, code],
-  );
-  const userName = useMemo(
-    () => new Map(state.users.map((item) => [item.username, item.name])),
-    [state.users],
-  );
+  const detail = useUnit(code);
+  const loans = useTransactions({ unit: code, pageSize: 6, page: 1 });
 
-  if (!unit) return <NotFound what={`No unit has the asset code ${code}.`} />;
-
-  const category = state.categories.find((item) => item.code === unit.categoryCode);
-  const location = state.locations.find((item) => item.id === unit.locationId);
-  const free = unit.status === 'in_stock' && !unit.reservedFor;
+  if (detail.error instanceof ApiError && detail.error.status === 404) {
+    return <NotFound what={`No unit has the asset code ${code}.`} />;
+  }
+  const unit = detail.data;
+  const category = categories.find((item) => item.code === unit?.categoryCode);
+  const free = unit?.status === 'in_stock' && !unit.reservedFor;
   const close = () => setOpen(null);
+  const history = [...(unit?.movements ?? []), ...(older?.items ?? [])];
+  const nextCursor = older ? older.cursor : (unit?.movementsCursor ?? null);
+
+  /** Every mutation answers with the unit as it now is; the lists it appears in are refreshed. */
+  const act = async (
+    path: string,
+    body: unknown,
+    key: string,
+    done: string,
+    method: 'POST' | 'PATCH' = 'POST',
+  ) => {
+    const updated = await apiSend<Unit>(method, `/units/${code}${path}`, body, key);
+    client.setQueryData<UnitDetailData>(keys.unit(code), (current) =>
+      current ? { ...current, ...updated } : current,
+    );
+    await Promise.all([
+      client.invalidateQueries({ queryKey: keys.unit(code) }),
+      invalidate('units', 'dashboard', 'alerts', 'inspections'),
+    ]);
+    setOlder(null);
+    toast(done);
+  };
+
+  const loadOlder = async () => {
+    if (!nextCursor) return;
+    setLoadingOlder(true);
+    try {
+      const page = await apiGet<{ items: Movement[]; nextCursor: string | null }>(
+        `/units/${code}/movements`,
+        {
+          cursor: nextCursor,
+          limit: 50,
+        },
+      );
+      setOlder((current) => ({
+        items: [...(current?.items ?? []), ...page.items],
+        cursor: page.nextCursor,
+      }));
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   return (
     <div className="page">
       <PageHead
-        crumbs={[{ label: 'Demo Units', to: '/units' }, { label: unit.code }]}
-        title={`${unit.brand} ${unit.model}`}
-        lead={`${category?.name ?? unit.categoryCode} · asset code ${unit.code}`}
+        crumbs={[{ label: 'Demo Units', to: '/units' }, { label: code }]}
+        title={unit ? `${unit.brand} ${unit.model}` : code}
+        lead={
+          unit ? `${category?.name ?? unit.categoryCode} · asset code ${unit.code}` : 'Loading…'
+        }
         actions={
-          <>
-            {can('unit.edit') && (
-              <Button icon={Pencil} onClick={() => setOpen('edit')}>
-                Edit
-              </Button>
-            )}
-            {can('unit.move') && free && (
-              <Button icon={MapPin} onClick={() => setOpen('move')}>
-                Move shelf
-              </Button>
-            )}
-            {can('unit.repair') && free && (
-              <Button icon={Wrench} onClick={() => setOpen('repair')}>
-                Send to repair
-              </Button>
-            )}
-            {can('unit.repair') && unit.status === 'for_repair' && (
-              <Button variant="primary" icon={Wrench} onClick={() => setOpen('repaired')}>
-                Repair complete
-              </Button>
-            )}
-            {can('unit.retire') && (free || unit.status === 'for_repair') && (
-              <Button variant="danger" icon={Archive} onClick={() => setOpen('retire')}>
-                Retire
-              </Button>
-            )}
-          </>
+          unit && (
+            <>
+              {can('unit.edit') && (
+                <Button icon={Pencil} onClick={() => setOpen('edit')}>
+                  Edit
+                </Button>
+              )}
+              {can('unit.move') && free && (
+                <Button icon={MapPin} onClick={() => setOpen('move')}>
+                  Move shelf
+                </Button>
+              )}
+              {can('unit.repair') && (free || unit.status === 'under_inspection') && (
+                <Button icon={Wrench} onClick={() => setOpen('repair')}>
+                  Send to repair
+                </Button>
+              )}
+              {can('unit.repair') && unit.status === 'for_repair' && (
+                <Button variant="primary" icon={Wrench} onClick={() => setOpen('repaired')}>
+                  Repair complete
+                </Button>
+              )}
+              {can('unit.retire') &&
+                (free || unit.status === 'for_repair' || unit.status === 'under_inspection') && (
+                  <Button variant="danger" icon={Archive} onClick={() => setOpen('retire')}>
+                    Retire
+                  </Button>
+                )}
+            </>
+          )
         }
       />
 
-      {!ready ? (
+      {!unit ? (
         <SkPage kind="detail" />
       ) : (
         <div className="grid-2">
@@ -126,7 +164,11 @@ export function UnitDetail() {
                 </div>
                 <div>
                   <dt>Location</dt>
-                  <dd>{location ? `${location.name} · ${location.zone}` : '—'}</dd>
+                  <dd>
+                    {unit.location
+                      ? `${unit.location.name}${unit.location.roomName ? ` · ${unit.location.roomName}` : ''}`
+                      : '—'}
+                  </dd>
                 </div>
                 <div>
                   <dt>Condition</dt>
@@ -148,6 +190,14 @@ export function UnitDetail() {
                     )}
                   </dd>
                 </div>
+                <div>
+                  <dt>Ownership</dt>
+                  <dd>
+                    {unit.ownership === 'owned'
+                      ? 'Netpoleon'
+                      : `Consigned by ${unit.ownerName ?? 'vendor'}`}
+                  </dd>
+                </div>
               </dl>
               {unit.notes && (
                 <p className="muted" style={{ marginTop: 10 }}>
@@ -156,10 +206,42 @@ export function UnitDetail() {
               )}
             </section>
 
+            {unit.reservations.length > 0 && (
+              <section className="card" aria-labelledby="bookings-title">
+                <div className="card-head">
+                  <h2 id="bookings-title">Bookings</h2>
+                  <span className="muted num">{unit.reservations.length}</span>
+                </div>
+                <div className="feed">
+                  {unit.reservations.map((booking) => (
+                    <Link
+                      key={`${booking.transactionNumber}-${booking.from}`}
+                      to={`/borrow/${booking.transactionNumber}`}
+                      className="feed-item"
+                      style={{ gridTemplateColumns: '1fr auto' }}
+                    >
+                      <span>
+                        <strong>{booking.company}</strong>
+                        <span className="cell-sub" style={{ display: 'block' }}>
+                          <span className="mono">{booking.transactionNumber}</span>
+                          {booking.status === 'needs_reassignment'
+                            ? ' · needs a substitute unit'
+                            : ''}
+                        </span>
+                      </span>
+                      <span className="num">
+                        {formatDate(booking.from)} – {formatDate(booking.until)}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section className="card table-card" aria-labelledby="history-title">
               <div className="card-head" style={{ paddingBottom: 14 }}>
                 <h2 id="history-title">Movement history</h2>
-                <span className="muted num">{history.length} entries</span>
+                <span className="muted num">{history.length} shown</span>
               </div>
               <table className="table">
                 <thead>
@@ -179,18 +261,24 @@ export function UnitDetail() {
                       </td>
                       <td data-label="Movement">
                         <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>
+                        {movement.toLocation && movement.toLocation !== movement.fromLocation && (
+                          <span className="cell-sub">to {movement.toLocation}</span>
+                        )}
                       </td>
                       <td data-label="Status after">
                         <StatusChip status={movement.toStatus} />
                       </td>
-                      <td data-label="By">{userName.get(movement.by) ?? movement.by}</td>
+                      <td data-label="By">{movement.by?.name ?? 'System'}</td>
                       <td data-label="Remarks">
                         {movement.note}
-                        {movement.loanNumber && (
+                        {movement.transactionNumber && (
                           <>
-                            {' · '}
-                            <Link to={`/borrow/${movement.loanNumber}`} className="link mono">
-                              {movement.loanNumber}
+                            {movement.note ? ' · ' : ''}
+                            <Link
+                              to={`/borrow/${movement.transactionNumber}`}
+                              className="link mono"
+                            >
+                              {movement.transactionNumber}
                             </Link>
                           </>
                         )}
@@ -199,6 +287,13 @@ export function UnitDetail() {
                   ))}
                 </tbody>
               </table>
+              {nextCursor && (
+                <div className="card-pad" style={{ paddingTop: 0 }}>
+                  <Button size="sm" pending={loadingOlder} onClick={() => void loadOlder()}>
+                    Show older movements
+                  </Button>
+                </div>
+              )}
             </section>
           </div>
 
@@ -224,9 +319,7 @@ export function UnitDetail() {
                   <span>
                     {unit.brand} {unit.model}
                   </span>
-                  {state.settings.labelShowsSerial && (
-                    <span className="mono">S/N {unit.serial}</span>
-                  )}
+                  {settings.labelShowsSerial && <span className="mono">S/N {unit.serial}</span>}
                 </div>
               </div>
               <CategoryThumb unit={unit} large />
@@ -252,13 +345,13 @@ export function UnitDetail() {
             <section className="card" aria-labelledby="loans-title">
               <div className="card-head">
                 <h2 id="loans-title">Borrower history</h2>
-                <span className="muted num">{loans.length}</span>
+                <span className="muted num">{loans.data?.total ?? ''}</span>
               </div>
-              {loans.length === 0 ? (
+              {loans.data && loans.data.items.length === 0 ? (
                 <Empty title="Never lent out">This unit has no loans yet.</Empty>
               ) : (
                 <div className="feed">
-                  {loans.slice(0, 6).map((loan) => (
+                  {(loans.data?.items ?? []).map((loan) => (
                     <Link
                       key={loan.number}
                       to={`/borrow/${loan.number}`}
@@ -266,12 +359,12 @@ export function UnitDetail() {
                       style={{ gridTemplateColumns: '1fr auto' }}
                     >
                       <span>
-                        <strong>{loan.borrower.company}</strong>
+                        <strong>{loan.company.name}</strong>
                         <span className="cell-sub" style={{ display: 'block' }}>
                           <span className="mono">{loan.number}</span> · {loan.purpose}
                         </span>
                       </span>
-                      <time dateTime={loan.startDate}>{formatDate(loan.startDate)}</time>
+                      <time dateTime={loan.neededFrom}>{formatDate(loan.neededFrom)}</time>
                     </Link>
                   ))}
                 </div>
@@ -281,48 +374,52 @@ export function UnitDetail() {
         </div>
       )}
 
-      {open === 'edit' && <EditDialog unit={unit} onClose={close} />}
-      {open === 'move' && (
-        <ShelfDialog
-          title="Move to another shelf"
-          description={`${unit.code} is on ${location?.name ?? 'an unknown shelf'}.`}
-          confirmLabel="Move unit"
-          currentId={unit.locationId}
+      {unit && open === 'edit' && (
+        <EditDialog
+          unit={unit}
           onClose={close}
-          onConfirm={(locationId) => {
-            store.moveUnit(user.username, unit.code, locationId);
-            toast(`${unit.code} moved`);
-          }}
+          onSave={(body, key) => act('', body, key, 'Unit details saved', 'PATCH')}
         />
       )}
-      {open === 'repair' && (
+      {unit && open === 'move' && (
+        <ShelfDialog
+          title="Move to another shelf"
+          description={`${unit.code} is on ${unit.location?.name ?? 'an unknown shelf'}.`}
+          confirmLabel="Move unit"
+          currentId={unit.location?.id ?? ''}
+          onClose={close}
+          onConfirm={(locationId, key) =>
+            act('/relocate', { locationId }, key, `${unit.code} moved`)
+          }
+        />
+      )}
+      {unit && open === 'repair' && (
         <ReasonDialog
           title="Send to repair"
-          description={`${unit.code} leaves the available stock until the repair is complete.`}
+          description={`${unit.code} leaves the available stock until the repair is complete. Future bookings of it are flagged for a substitute.`}
           label="What is wrong with it?"
           placeholder="Fan fault, port 3 dead, cracked bezel…"
           confirmLabel="Send to repair"
           onClose={close}
-          onConfirm={(reason) => {
-            store.sendToRepair(user.username, unit.code, reason);
-            toast(`${unit.code} sent to the repair bench`);
-          }}
+          onConfirm={(reason, key) =>
+            act('/repair', { reason }, key, `${unit.code} sent to the repair bench`)
+          }
         />
       )}
-      {open === 'repaired' && (
-        <ShelfDialog
+      {unit && open === 'repaired' && (
+        <ReasonDialog
           title="Repair complete"
-          description="Choose the shelf the repaired unit goes back to."
-          confirmLabel="Restock unit"
-          currentId=""
+          description="The unit goes back through inspection before it returns to a shelf."
+          label="What was done?"
+          placeholder="Replaced fan, re-flashed firmware…"
+          confirmLabel="Send to inspection"
           onClose={close}
-          onConfirm={(locationId) => {
-            store.completeRepair(user.username, unit.code, locationId, '');
-            toast(`${unit.code} is ${STATUS_LABELS.in_stock.toLowerCase()} again`);
-          }}
+          onConfirm={(note, key) =>
+            act('/repair-complete', { note }, key, `${unit.code} is waiting for inspection`)
+          }
         />
       )}
-      {open === 'retire' && (
+      {unit && open === 'retire' && (
         <ReasonDialog
           title="Retire this unit"
           description="A retired unit leaves the inventory counts. Its history is kept."
@@ -331,60 +428,43 @@ export function UnitDetail() {
           confirmLabel="Retire unit"
           danger
           onClose={close}
-          onConfirm={(reason) => {
-            store.retireUnit(user.username, unit.code, reason);
-            toast(`${unit.code} retired`);
-          }}
+          onConfirm={(reason, key) => act('/retire', { reason }, key, `${unit.code} retired`)}
         />
       )}
     </div>
   );
 }
 
-function EditDialog({ unit, onClose }: { unit: Unit; onClose: () => void }) {
-  const store = useStore();
-  const user = useCurrentUser();
-  const toast = useToast();
-  const [brand, setBrand] = useState(unit.brand);
-  const [model, setModel] = useState(unit.model);
+function EditDialog({
+  unit,
+  onClose,
+  onSave,
+}: {
+  unit: Unit;
+  onClose: () => void;
+  onSave: (
+    body: { serial: string; condition: ConditionGrade; notes: string | null },
+    key: string,
+  ) => Promise<void>;
+}) {
   const [serial, setSerial] = useState(unit.serial);
-  const [accessories, setAccessories] = useState(unit.accessories.join(', '));
-  const [notes, setNotes] = useState(unit.notes);
+  const [condition, setCondition] = useState<ConditionGrade>(unit.condition);
+  const [notes, setNotes] = useState(unit.notes ?? '');
 
   return (
     <ActionDialog
       title={`Edit ${unit.code}`}
-      description="The asset code never changes."
+      description="The asset code never changes. Brand, model and accessories belong to the product model."
       confirmLabel="Save changes"
       width={560}
       onClose={onClose}
-      onConfirm={() => {
-        store.updateUnit(user.username, unit.code, {
-          brand,
-          model,
-          serial,
-          accessories: accessories.split(','),
-          notes,
-        });
-        toast('Unit details saved');
-      }}
+      canConfirm={serial.trim() !== ''}
+      onConfirm={(key) =>
+        onSave({ serial: serial.trim(), condition, notes: notes.trim() || null }, key)
+      }
     >
       <div className="form-grid cols-2">
-        <Field label="Brand">
-          <input
-            className="input"
-            value={brand}
-            onChange={(event) => setBrand(event.target.value)}
-          />
-        </Field>
-        <Field label="Model">
-          <input
-            className="input"
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-          />
-        </Field>
-        <Field label="Serial number" className="span-2">
+        <Field label="Serial number">
           <input
             className="input mono"
             value={serial}
@@ -392,11 +472,11 @@ function EditDialog({ unit, onClose }: { unit: Unit; onClose: () => void }) {
             spellCheck={false}
           />
         </Field>
-        <Field label="Accessories" hint="Separate with commas." className="span-2">
-          <input
-            className="input"
-            value={accessories}
-            onChange={(event) => setAccessories(event.target.value)}
+        <Field label="Condition">
+          <Select
+            value={condition}
+            onChange={(value) => setCondition(value as ConditionGrade)}
+            options={CONDITION_OPTIONS}
           />
         </Field>
         <Field label="Notes" className="span-2">

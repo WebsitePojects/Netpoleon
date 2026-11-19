@@ -28,10 +28,15 @@ import {
 } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
-import { useWmsState } from '../data/context.js';
-import { ROLE_LABELS } from '../data/permissions.js';
-import { buildAlerts } from '../data/selectors.js';
-import type { WmsState } from '../data/types.js';
+import { ROLE_LABELS } from '@wms/contracts';
+import {
+  useAlerts,
+  useDebounced,
+  useInspectionQueue,
+  useStageCounts,
+  useTransactions,
+  useUnits,
+} from '../api/queries.js';
 import { useDismiss, useIsDark, useTheme, type ThemeChoice } from '../lib/hooks.js';
 import { Avatar, Brand, LoanChip, StatusChip } from './ui.js';
 
@@ -72,15 +77,13 @@ function isActive(pathname: string, item: NavItem): boolean {
 
 export function Shell() {
   const location = useLocation();
-  const state = useWmsState();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const unreadAlerts = useMemo(
-    () => buildAlerts(state, new Date()).filter((alert) => !alert.read).length,
-    [state],
-  );
-  const pendingRequests = state.loans.filter((loan) => loan.status === 'pending').length;
-  const awaitingInspection = state.units.filter((unit) => unit.status === 'returned').length;
+  // Small, shared queries: the same keys feed the pages, so a badge and its page agree.
+  const unreadAlerts = useAlerts().data?.unread ?? 0;
+  const pendingRequests = useStageCounts().data?.pending ?? 0;
+  const awaitingInspection =
+    useInspectionQueue({ status: 'returned', page: 1, pageSize: 25 }).data?.counts.returned ?? 0;
   const badges: Record<string, number> = {
     '/borrow': pendingRequests,
     '/inspection': awaitingInspection,
@@ -141,7 +144,7 @@ export function Shell() {
           >
             <Menu aria-hidden="true" />
           </button>
-          <GlobalSearch state={state} />
+          <GlobalSearch />
           <div className="header-spacer" />
           <ThemeToggle />
           <Link
@@ -251,50 +254,45 @@ interface SearchHit {
   chip: ReactNode;
 }
 
-const MAX_HITS = 8;
+const MAX_HITS = 5;
 
-function searchAll(state: WmsState, query: string): SearchHit[] {
-  const needle = query.trim().toLowerCase();
-  if (needle.length < 2) return [];
+/** Two small server searches, units and transactions, run once typing settles. */
+function useSearchHits(query: string): SearchHit[] {
+  const needle = useDebounced(query.trim());
+  const enabled = needle.length >= 2;
+  const params = { q: needle, pageSize: MAX_HITS, page: 1 };
+  const units = useUnits(params, enabled);
+  const transactions = useTransactions(params, enabled);
+  if (!enabled) return [];
   const hits: SearchHit[] = [];
-  for (const unit of state.units) {
-    if (hits.length >= MAX_HITS) return hits;
-    const text = `${unit.code} ${unit.serial} ${unit.brand} ${unit.model}`.toLowerCase();
-    if (text.includes(needle)) {
-      hits.push({
-        key: unit.code,
-        to: `/units/${unit.code}`,
-        title: unit.code,
-        detail: `${unit.brand} ${unit.model} · ${unit.serial}`,
-        chip: <StatusChip status={unit.status} reserved={unit.reservedFor !== null} />,
-      });
-    }
+  for (const unit of units.data?.items ?? []) {
+    hits.push({
+      key: unit.code,
+      to: `/units/${unit.code}`,
+      title: unit.code,
+      detail: `${unit.brand} ${unit.model} · ${unit.serial}`,
+      chip: <StatusChip status={unit.status} reserved={unit.reservedFor !== null} />,
+    });
   }
-  // Newest transactions first: someone searching a borrower usually wants the current loan.
-  for (let index = state.loans.length - 1; index >= 0 && hits.length < MAX_HITS; index -= 1) {
-    const loan = state.loans[index];
-    if (!loan) continue;
-    const text = `${loan.number} ${loan.borrower.name} ${loan.borrower.company}`.toLowerCase();
-    if (text.includes(needle)) {
-      hits.push({
-        key: loan.number,
-        to: `/borrow/${loan.number}`,
-        title: loan.number,
-        detail: `${loan.borrower.name} · ${loan.borrower.company}`,
-        chip: <LoanChip status={loan.status} />,
-      });
-    }
+  for (const transaction of transactions.data?.items ?? []) {
+    hits.push({
+      key: transaction.number,
+      to: `/borrow/${transaction.number}`,
+      title: transaction.number,
+      detail: `${transaction.contact.name} · ${transaction.company.name}`,
+      chip: <LoanChip status={transaction.stage} />,
+    });
   }
   return hits;
 }
 
-function GlobalSearch({ state }: { state: WmsState }) {
+function GlobalSearch() {
   const navigate = useNavigate();
   const box = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const hits = useMemo(() => searchAll(state, query), [state, query]);
+  const hits = useSearchHits(query);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(box, open, close);
 
@@ -370,16 +368,13 @@ function GlobalSearch({ state }: { state: WmsState }) {
 
 function PersonMenu() {
   const user = useCurrentUser();
-  const { signOut, switchTo } = useAuth();
-  const { users } = useWmsState();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
   const box = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useTheme();
   const close = useCallback(() => setOpen(false), []);
   useDismiss(box, open, close);
-
-  const others = users.filter((item) => item.active && item.username !== user.username);
 
   return (
     <div className="person" ref={box}>
@@ -429,35 +424,13 @@ function PersonMenu() {
             ))}
           </div>
           <div className="menu-sep" />
-          <p className="menu-label">Demo: switch account</p>
-          {others.map((item) => (
-            <button
-              key={item.username}
-              type="button"
-              role="menuitem"
-              className="menu-item"
-              onClick={() => {
-                setOpen(false);
-                switchTo(item.username);
-              }}
-            >
-              <Avatar name={item.name} />
-              <span>
-                {item.name}
-                <span className="cell-sub" style={{ display: 'block' }}>
-                  {ROLE_LABELS[item.role]}
-                </span>
-              </span>
-            </button>
-          ))}
           <div className="menu-sep" />
           <button
             type="button"
             role="menuitem"
             className="menu-item danger"
             onClick={() => {
-              signOut();
-              void navigate('/login', { replace: true });
+              void signOut().finally(() => void navigate('/login', { replace: true }));
             }}
           >
             <LogOut aria-hidden="true" />

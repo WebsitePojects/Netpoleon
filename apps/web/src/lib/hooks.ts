@@ -6,24 +6,14 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from 'react';
-import { WmsError } from '../data/store.js';
-
-/**
- * Stand-in for the network round trip the real API will add. It makes pending states and
- * loaders visible in the demo, so they are designed now rather than discovered later.
- */
-const SIMULATED_LATENCY_MS = 420;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { ApiError } from '../api/client.js';
 
 export interface SubmitGuard {
   pending: boolean;
   error: string | null;
   clearError: () => void;
   /** Runs `action` unless one is already running. Resolves true when it succeeded. */
-  run: (action: () => void) => Promise<boolean>;
+  run: (action: () => Promise<unknown> | void) => Promise<boolean>;
 }
 
 /**
@@ -35,17 +25,16 @@ export function useSubmit(): SubmitGuard {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const run = useCallback(async (action: () => void): Promise<boolean> => {
+  const run = useCallback(async (action: () => Promise<unknown> | void): Promise<boolean> => {
     if (inFlight.current) return false;
     inFlight.current = true;
     setPending(true);
     setError(null);
     try {
-      await delay(SIMULATED_LATENCY_MS);
-      action();
+      await action();
       return true;
     } catch (caught) {
-      if (caught instanceof WmsError) {
+      if (caught instanceof ApiError) {
         setError(caught.message);
       } else {
         // A bug, not a broken rule: show something honest and keep the detail for the console.
@@ -61,16 +50,6 @@ export function useSubmit(): SubmitGuard {
 
   const clearError = useCallback(() => setError(null), []);
   return { pending, error, clearError, run };
-}
-
-/** False for a short moment after mount, so a screen can show its skeleton first. */
-export function usePageReady(): boolean {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setReady(true), SIMULATED_LATENCY_MS);
-    return () => clearTimeout(timer);
-  }, []);
-  return ready;
 }
 
 function prefersReducedMotion(): boolean {

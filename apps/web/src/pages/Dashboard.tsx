@@ -1,9 +1,11 @@
+import type { Alert, AlertKind, AssetStatus, Movement } from '@wms/contracts';
 import {
   Boxes,
   CalendarClock,
   CircleCheck,
   PackageCheck,
   PackagePlus,
+  RefreshCcw,
   RotateCcw,
   Search,
   SearchCheck,
@@ -13,31 +15,16 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../auth/auth.js';
+import { useDashboard } from '../api/queries.js';
+import { useAuth, useReference } from '../auth/auth.js';
 import { Donut } from '../components/charts.js';
 import { Sk, SkTable } from '../components/controls.js';
 import { Empty, LoanChip, PageHead, order } from '../components/ui.js';
-import { useWmsState } from '../data/context.js';
-import {
-  ACTIVE_STATUSES,
-  buildAlerts,
-  countByStatus,
-  daysOverdue,
-  STATUS_LABELS,
-  type Alert,
-  type AlertKind,
-} from '../data/selectors.js';
-import type { Movement, UnitStatus } from '../data/types.js';
-import {
-  daysBetween,
-  formatDate,
-  formatLongDate,
-  formatRelative,
-  toDateKey,
-} from '../lib/dates.js';
-import { useCountUp, usePageReady } from '../lib/hooks.js';
+import { formatDate, formatLongDate, formatRelative } from '../lib/dates.js';
+import { useCountUp } from '../lib/hooks.js';
+import { ACTIVE_STATUSES, STATUS_LABELS } from '../lib/labels.js';
 
 interface KpiSpec {
   label: string;
@@ -72,30 +59,39 @@ export const ALERT_ICONS: Record<AlertKind, LucideIcon> = {
   missing_accessory: TriangleAlert,
   for_inspection: Search,
   ready: CircleCheck,
+  needs_reassignment: RefreshCcw,
 };
 
-export const ALERT_TONES: Record<AlertKind, UnitStatus> = {
+export const ALERT_TONES: Record<AlertKind, AssetStatus> = {
   overdue: 'under_inspection',
   missing_accessory: 'on_demo',
   for_inspection: 'returned',
   ready: 'in_stock',
+  needs_reassignment: 'for_repair',
 };
+
+/** Where an alert leads: the transaction when it has one, otherwise the unit. */
+export function alertHref(alert: Alert): string {
+  if (alert.transactionNumber) return `/borrow/${alert.transactionNumber}`;
+  if (alert.assetCode) return `/units/${alert.assetCode}`;
+  return '/alerts';
+}
 
 export function AlertCard({ alert }: { alert: Alert }) {
   const Icon = ALERT_ICONS[alert.kind];
   return (
     <Link
-      to={alert.href}
+      to={alertHref(alert)}
       className="alert-card"
       data-tone={ALERT_TONES[alert.kind]}
       data-read={alert.read}
     >
       <h3>{alert.title}</h3>
       <div>
-        <strong className="mono">{alert.unitCode}</strong>
-        <p>{alert.message}</p>
+        <strong className="mono">{alert.assetCode ?? alert.transactionNumber}</strong>
+        <p>{alert.body}</p>
       </div>
-      <time dateTime={alert.date}>{formatDate(alert.date)}</time>
+      <time dateTime={alert.at}>{formatDate(alert.at)}</time>
       <Icon className="alert-art" aria-hidden="true" />
     </Link>
   );
@@ -103,7 +99,7 @@ export function AlertCard({ alert }: { alert: Alert }) {
 
 /** Movement types worth a line in "recent activities"; shelf moves and reservations are noise. */
 const FEED: Partial<
-  Record<Movement['type'], { icon: LucideIcon; tone: UnitStatus; label: string }>
+  Record<Movement['type'], { icon: LucideIcon; tone: AssetStatus; label: string }>
 > = {
   released: { icon: Send, tone: 'on_demo', label: 'Borrowed' },
   returned: { icon: Undo2, tone: 'in_stock', label: 'Returned' },
@@ -194,95 +190,70 @@ function DashboardSkeleton() {
 }
 
 export function Dashboard() {
-  const state = useWmsState();
   const { can } = useAuth();
-  const ready = usePageReady();
-  const now = useMemo(() => new Date(), []);
-  const today = toDateKey(now);
+  const { serverDate } = useReference();
+  const dashboard = useDashboard();
+  const data = dashboard.data;
+  const now = new Date();
 
-  const counts = useMemo(() => countByStatus(state.units), [state.units]);
-  const alerts = useMemo(() => buildAlerts(state, now), [state, now]);
-  const unitByCode = useMemo(
-    () => new Map(state.units.map((unit) => [unit.code, unit])),
-    [state.units],
-  );
-
-  const recent = useMemo(() => {
-    const items: Movement[] = [];
-    for (
-      let index = state.movements.length - 1;
-      index >= 0 && items.length < RECENT_LIMIT;
-      index -= 1
-    ) {
-      const movement = state.movements[index];
-      if (movement && FEED[movement.type]) items.push(movement);
-    }
-    return items;
-  }, [state.movements]);
-
-  const dueSoon = useMemo(
-    () =>
-      state.loans
-        .filter(
-          (loan) => loan.status === 'released' && daysBetween(today, loan.dueDate) <= DUE_SOON_DAYS,
-        )
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .slice(0, 6),
-    [state.loans, today],
-  );
-
-  const reserved = state.units.filter(
-    (unit) => unit.status === 'in_stock' && unit.reservedFor,
-  ).length;
-  const overdueCount = alerts.filter((alert) => alert.kind === 'overdue').length;
-  const kpis: KpiSpec[] = [
-    {
-      label: 'Total Demo Units',
-      note: `Across ${state.categories.length} categories`,
-      color: 'var(--st-total)',
-      icon: Boxes,
-      to: '/units',
-      value: counts.total,
-    },
-    {
-      label: 'Available',
-      note: reserved > 0 ? `${reserved} reserved for pickup` : 'Ready to lend',
-      color: 'var(--st-in_stock)',
-      icon: CircleCheck,
-      to: '/units?status=in_stock',
-      value: counts.in_stock,
-    },
-    {
-      label: 'On Demo',
-      note: overdueCount > 0 ? `${overdueCount} overdue` : 'All within schedule',
-      color: 'var(--st-on_demo)',
-      icon: Send,
-      to: '/units?status=on_demo',
-      value: counts.on_demo,
-    },
-    {
-      label: 'Returned',
-      note: 'Waiting for inspection',
-      color: 'var(--st-returned)',
-      icon: RotateCcw,
-      to: '/inspection',
-      value: counts.returned,
-    },
-    {
-      label: 'Under Inspection',
-      note: `${counts.for_repair} more in repair`,
-      color: 'var(--st-under_inspection)',
-      icon: Search,
-      to: '/inspection?tab=inspecting',
-      value: counts.under_inspection,
-    },
-  ];
+  const counts = data?.counts;
+  const kpis: KpiSpec[] = counts
+    ? [
+        {
+          label: 'Total Demo Units',
+          note: `Across ${data.categories} categories`,
+          color: 'var(--st-total)',
+          icon: Boxes,
+          to: '/units',
+          value: counts.total,
+        },
+        {
+          label: 'Available',
+          note:
+            data.reservedForPickup > 0
+              ? `${data.reservedForPickup} reserved for pickup`
+              : 'Ready to lend',
+          color: 'var(--st-in_stock)',
+          icon: CircleCheck,
+          to: '/units?status=in_stock',
+          value: counts.in_stock,
+        },
+        {
+          label: 'On Demo',
+          note: data.overdue > 0 ? `${data.overdue} overdue` : 'All within schedule',
+          color: 'var(--st-on_demo)',
+          icon: Send,
+          to: '/units?status=on_demo',
+          value: counts.on_demo,
+        },
+        {
+          label: 'Returned',
+          note: 'Waiting for inspection',
+          color: 'var(--st-returned)',
+          icon: RotateCcw,
+          to: '/inspection',
+          value: counts.returned,
+        },
+        {
+          label: 'Under Inspection',
+          note: `${counts.for_repair} more in repair`,
+          color: 'var(--st-under_inspection)',
+          icon: Search,
+          to: '/inspection?tab=inspecting',
+          value: counts.under_inspection,
+        },
+      ]
+    : [];
 
   const slices = ACTIVE_STATUSES.map((status) => ({
     label: STATUS_LABELS[status],
-    value: counts[status],
+    value: counts?.[status] ?? 0,
     color: `var(--st-${status})`,
   }));
+  const recent = (data?.recent ?? [])
+    .filter((movement) => FEED[movement.type])
+    .slice(0, RECENT_LIMIT);
+  const alerts = data?.alerts;
 
   return (
     <div className="page">
@@ -293,7 +264,7 @@ export function Dashboard() {
           <>
             <span className="btn" style={{ cursor: 'default' }}>
               <CalendarClock aria-hidden="true" />
-              {formatLongDate(today)}
+              {formatLongDate(serverDate)}
             </span>
             {can('loan.request') && (
               <Link to="/borrow?new=1" className="btn btn-primary">
@@ -305,7 +276,7 @@ export function Dashboard() {
         }
       />
 
-      {!ready ? (
+      {!data ? (
         <DashboardSkeleton />
       ) : (
         <div className="stack content-in">
@@ -332,7 +303,6 @@ export function Dashboard() {
               <div className="feed">
                 {recent.map((movement) => {
                   const spec = FEED[movement.type];
-                  const unit = unitByCode.get(movement.unitCode);
                   if (!spec) return null;
                   return (
                     <Link
@@ -347,7 +317,7 @@ export function Dashboard() {
                         <strong>{spec.label}</strong>
                         <span className="cell-sub" style={{ display: 'block' }}>
                           <span className="mono">{movement.unitCode}</span>
-                          {unit ? ` · ${unit.brand} ${unit.model}` : ''}
+                          {movement.by ? ` · ${movement.by.name}` : ''}
                         </span>
                       </span>
                       <time dateTime={movement.at}>{formatRelative(movement.at, now)}</time>
@@ -364,20 +334,15 @@ export function Dashboard() {
                 Alerts and Notifications
               </h2>
               <Link to="/alerts" className="link">
-                View all {alerts.length}
+                View all {alerts ? Object.values(alerts.counts).reduce((sum, n) => sum + n, 0) : ''}
               </Link>
             </div>
             <div className="alert-grid stagger">
-              {(['overdue', 'missing_accessory', 'for_inspection', 'ready'] as AlertKind[]).map(
-                (kind, index) => {
-                  const alert = alerts.find((item) => item.kind === kind);
-                  return alert ? (
-                    <div key={kind} style={order(index)}>
-                      <AlertCard alert={alert} />
-                    </div>
-                  ) : null;
-                },
-              )}
+              {(alerts?.items ?? []).map((alert, index) => (
+                <div key={alert.key} style={order(index)}>
+                  <AlertCard alert={alert} />
+                </div>
+              ))}
             </div>
           </section>
 
@@ -386,7 +351,7 @@ export function Dashboard() {
               <h2 id="due-title">Returns Due Within {DUE_SOON_DAYS} Days</h2>
               <Link to="/borrow?tab=on_demo">All loans</Link>
             </div>
-            {dueSoon.length === 0 ? (
+            {data.dueSoon.length === 0 ? (
               <Empty title="Nothing is due this week">
                 Every unit on demo has more than a week left.
               </Empty>
@@ -402,31 +367,30 @@ export function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {dueSoon.map((loan) => {
-                    const late = daysOverdue(loan, today);
-                    return (
-                      <tr key={loan.number} className={late > 0 ? 'is-late' : undefined}>
-                        <td data-label="Transaction">
-                          <Link to={`/borrow/${loan.number}`} className="row-link mono">
-                            {loan.number}
-                          </Link>
-                        </td>
-                        <td data-label="Borrower">
-                          <span className="cell-main">{loan.borrower.company}</span>
-                        </td>
-                        <td data-label="Unit" className="mono">
-                          {loan.unitCode}
-                        </td>
-                        <td data-label="Due" className="num">
-                          {formatDate(loan.dueDate)}
-                          {late > 0 && <span className="late"> · {late}d late</span>}
-                        </td>
-                        <td data-label="Status">
-                          <LoanChip status={loan.status} />
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {data.dueSoon.map((loan) => (
+                    <tr key={loan.number} className={loan.daysOverdue > 0 ? 'is-late' : undefined}>
+                      <td data-label="Transaction">
+                        <Link to={`/borrow/${loan.number}`} className="row-link mono">
+                          {loan.number}
+                        </Link>
+                      </td>
+                      <td data-label="Borrower">
+                        <span className="cell-main">{loan.company}</span>
+                      </td>
+                      <td data-label="Unit" className="mono">
+                        {loan.unitCodes.join(', ')}
+                      </td>
+                      <td data-label="Due" className="num">
+                        {formatDate(loan.dueDate)}
+                        {loan.daysOverdue > 0 && (
+                          <span className="late"> · {loan.daysOverdue}d late</span>
+                        )}
+                      </td>
+                      <td data-label="Status">
+                        <LoanChip status="released" />
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}

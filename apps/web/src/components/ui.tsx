@@ -24,8 +24,8 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { LOAN_STATUS_LABELS, STATUS_LABELS } from '../data/selectors.js';
-import type { Loan, Unit, UnitStatus } from '../data/types.js';
+import type { AssetStatus, TransactionStage } from '@wms/contracts';
+import { STAGE_LABELS, STAGE_TONES, STATUS_LABELS, STATUS_TONES } from '../lib/labels.js';
 import { useLiquidInk } from '../lib/hooks.js';
 
 /** The Netpoleon logo. The default cut has a white wordmark for charcoal surfaces. */
@@ -88,7 +88,7 @@ export function StatusChip({
   status,
   reserved = false,
 }: {
-  status: UnitStatus;
+  status: AssetStatus;
   reserved?: boolean;
 }) {
   if (status === 'in_stock' && reserved) {
@@ -99,26 +99,16 @@ export function StatusChip({
     );
   }
   return (
-    <span className="chip" data-tone={status}>
+    <span className="chip" data-tone={STATUS_TONES[status]}>
       {STATUS_LABELS[status]}
     </span>
   );
 }
 
-const LOAN_TONES: Record<Loan['status'], string> = {
-  pending: 'for_repair',
-  approved: 'in_stock',
-  released: 'on_demo',
-  returned: 'returned',
-  closed: 'retired',
-  rejected: 'under_inspection',
-  cancelled: 'under_inspection',
-};
-
-export function LoanChip({ status }: { status: Loan['status'] }) {
+export function LoanChip({ status }: { status: TransactionStage }) {
   return (
-    <span className="chip" data-tone={LOAN_TONES[status]}>
-      {LOAN_STATUS_LABELS[status]}
+    <span className="chip" data-tone={STAGE_TONES[status]}>
+      {STAGE_LABELS[status]}
     </span>
   );
 }
@@ -136,7 +126,7 @@ export function CategoryThumb({
   unit,
   large = false,
 }: {
-  unit: Pick<Unit, 'categoryCode'>;
+  unit: { categoryCode: string };
   large?: boolean;
 }) {
   const source = CATEGORY_IMAGES[unit.categoryCode];

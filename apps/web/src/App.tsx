@@ -5,7 +5,7 @@ import { Alerts } from './pages/Alerts.js';
 import { Borrow } from './pages/Borrow.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Inspection } from './pages/Inspection.js';
-import { ForgotPassword, Login } from './pages/Login.js';
+import { ForgotPassword, Login, SetPassword } from './pages/Login.js';
 import { NotFound } from './pages/NotFound.js';
 import { Profile } from './pages/Profile.js';
 import { Reports } from './pages/Reports.js';
@@ -17,8 +17,10 @@ import { Users } from './pages/Users.js';
 
 /** Sends a signed-out visitor to sign in, remembering the page they asked for. */
 function Protected() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
+  // The boot screen stays up while the session is checked; nothing flashes the sign-in page.
+  if (loading) return null;
   if (!user) {
     const from = leftOnPurpose() ? '/' : location.pathname + location.search;
     return <Navigate to="/login" replace state={{ from }} />;
@@ -31,6 +33,8 @@ export function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<SetPassword purpose="reset" />} />
+      <Route path="/accept-invite/:token" element={<SetPassword purpose="invite" />} />
       <Route element={<Protected />}>
         <Route index element={<Dashboard />} />
         <Route path="units" element={<Units />} />

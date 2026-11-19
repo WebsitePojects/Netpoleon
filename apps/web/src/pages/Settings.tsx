@@ -6,22 +6,29 @@ import {
   Info,
   MapPin,
   Plus,
-  RotateCcw,
   ShieldCheck,
   Tag,
   Printer,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
+import type { Settings as SettingsData, SettingsResponse } from '@wms/contracts';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiSend, newIntentKey } from '../api/client.js';
+import {
+  keys,
+  useCategories,
+  useInvalidate,
+  useLocations,
+  useSettingsQuery,
+} from '../api/queries.js';
+import { useAuth } from '../auth/auth.js';
 import { Select, SkPage } from '../components/controls.js';
 import { ActionDialog } from '../components/dialogs.js';
 import { QrCode } from '../components/QrCode.js';
 import { Button, Field, FormError, PageHead, Switch, useToast } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import type { Settings as SettingsData } from '../data/types.js';
-import { usePageReady, useSubmit } from '../lib/hooks.js';
+import { useSubmit } from '../lib/hooks.js';
 
 type SectionId =
   | 'general'
@@ -70,7 +77,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; lead: string }
     id: 'data',
     label: 'Backup and data',
     icon: Database,
-    lead: 'Backups and the demo data in this browser.',
+    lead: 'Backups and how data is kept.',
   },
 ];
 
@@ -79,7 +86,7 @@ function isSectionId(value: string | null): value is SectionId {
 }
 
 export function Settings() {
-  const ready = usePageReady();
+  const ready = useSettingsQuery().data !== undefined;
   const [params, setParams] = useSearchParams();
   const sectionParam = params.get('section');
   const active: SectionId = isSectionId(sectionParam) ? sectionParam : 'general';
@@ -156,13 +163,16 @@ export function Settings() {
  * `draft` starts from the stored settings and is re-synced after every successful save.
  */
 function useSettingsDraft() {
-  const store = useStore();
-  const { settings } = useWmsState();
-  const user = useCurrentUser();
+  const stored = useSettingsQuery().data as SettingsResponse;
+  const client = useQueryClient();
   const toast = useToast();
   const submit = useSubmit();
-  const [draft, setDraft] = useState<SettingsData>(settings);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
+  const intent = useRef(newIntentKey());
+  const [draft, setDraft] = useState<SettingsData>(stored);
+  const changed = (Object.keys(draft) as (keyof SettingsData)[]).filter(
+    (key) => draft[key] !== stored[key],
+  );
+  const dirty = changed.length > 0;
 
   useEffect(() => {
     if (!dirty) return;
@@ -176,12 +186,19 @@ function useSettingsDraft() {
     setDraft((current) => ({ ...current, [key]: value }));
   };
   const save = () => {
-    void submit.run(() => {
-      store.updateSettings(user.username, draft);
+    // Only the fields that changed are sent, so two admins editing different sections do not
+    // overwrite each other's settings with stale copies.
+    const patch = Object.fromEntries(changed.map((key) => [key, draft[key]]));
+    void submit.run(async () => {
+      const saved = await apiSend<SettingsResponse>('PATCH', '/settings', patch, intent.current);
+      intent.current = newIntentKey();
+      client.setQueryData(keys.settings, saved);
+      await client.invalidateQueries({ queryKey: keys.bootstrap });
+      setDraft(saved);
       toast('Settings saved');
     });
   };
-  return { draft, set, save, dirty, submit, reset: () => setDraft(settings) };
+  return { draft, set, save, dirty, submit, reset: () => setDraft(stored) };
 }
 
 type Draft = ReturnType<typeof useSettingsDraft>;
@@ -312,16 +329,8 @@ function GeneralSection({ editable }: { editable: boolean }) {
             onChange={(event) => draft.set('warehouseName', event.target.value)}
           />
         </Field>
-        <Field label="Time zone" hint="Due dates and “today” follow this zone.">
-          <Select
-            disabled={!editable}
-            value={draft.draft.timezone}
-            onChange={(value) => draft.set('timezone', value)}
-            options={[
-              { value: 'Asia/Manila', label: 'Asia/Manila', hint: 'UTC+8' },
-              { value: 'Asia/Singapore', label: 'Asia/Singapore', hint: 'UTC+8' },
-            ]}
-          />
+        <Field label="Time zone" hint="Due dates and “today” follow this zone. Fixed by design.">
+          <input className="input" disabled value="Asia/Manila (UTC+8)" />
         </Field>
       </div>
       <SaveBar draft={draft} editable={editable} />
@@ -330,10 +339,9 @@ function GeneralSection({ editable }: { editable: boolean }) {
 }
 
 function CategoriesSection({ editable }: { editable: boolean }) {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
+  const categories = useCategories().data ?? [];
   const toast = useToast();
+  const invalidate = useInvalidate();
   const [adding, setAdding] = useState(false);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -350,7 +358,7 @@ function CategoriesSection({ editable }: { editable: boolean }) {
           </tr>
         </thead>
         <tbody>
-          {state.categories.map((category) => (
+          {categories.map((category) => (
             <tr key={category.code}>
               <td data-label="Category">
                 <span className="cell-main">{category.name}</span>
@@ -362,7 +370,7 @@ function CategoriesSection({ editable }: { editable: boolean }) {
                 NTP-{category.code}-00001
               </td>
               <td data-label="Units" className="right num">
-                {state.units.filter((unit) => unit.categoryCode === category.code).length}
+                {category.unitCount}
               </td>
             </tr>
           ))}
@@ -370,7 +378,7 @@ function CategoriesSection({ editable }: { editable: boolean }) {
       </table>
       {editable && (
         <div className="save-bar">
-          <span>A category with units cannot be removed.</span>
+          <span>A category's code is fixed once created: it is printed in every asset code.</span>
           <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>
             Add category
           </Button>
@@ -380,9 +388,11 @@ function CategoriesSection({ editable }: { editable: boolean }) {
         <ActionDialog
           title="Add a category"
           confirmLabel="Add category"
+          canConfirm={name.trim() !== '' && /^[A-Z]{2,4}$/.test(code)}
           onClose={() => setAdding(false)}
-          onConfirm={() => {
-            store.addCategory(user.username, code, name);
+          onConfirm={async (key) => {
+            await apiSend('POST', '/categories', { name: name.trim(), code }, key);
+            await invalidate('categories', 'bootstrap');
             toast(`Category ${name.trim()} added`);
             setCode('');
             setName('');
@@ -402,7 +412,7 @@ function CategoriesSection({ editable }: { editable: boolean }) {
               value={code}
               placeholder="UPS"
               maxLength={4}
-              onChange={(event) => setCode(event.target.value.toUpperCase())}
+              onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
             />
           </Field>
         </ActionDialog>
@@ -411,15 +421,17 @@ function CategoriesSection({ editable }: { editable: boolean }) {
   );
 }
 
+const KIND_LABELS = { site: 'Site', room: 'Room / area', shelf: 'Shelf' } as const;
+
 function LocationsSection({ editable }: { editable: boolean }) {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
+  const locations = useLocations().data ?? [];
   const toast = useToast();
+  const invalidate = useInvalidate();
+  const rooms = locations.filter((item) => item.kind === 'room');
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const [zone, setZone] = useState('');
-  const KIND_LABELS = { shelf: 'Shelf', area: 'Work area', site: 'Outside' } as const;
+  const [code, setCode] = useState('');
+  const [parentId, setParentId] = useState('');
 
   return (
     <>
@@ -427,25 +439,24 @@ function LocationsSection({ editable }: { editable: boolean }) {
         <thead>
           <tr>
             <th>Location</th>
-            <th>Zone</th>
+            <th>Room</th>
             <th>Type</th>
             <th className="right">Units here</th>
           </tr>
         </thead>
         <tbody>
-          {state.locations.map((location) => (
+          {locations.map((location) => (
             <tr key={location.id}>
               <td data-label="Location">
                 <span className="cell-main">{location.name}</span>
+                <span className="cell-sub mono" style={{ display: 'block' }}>
+                  {location.code}
+                </span>
               </td>
-              <td data-label="Zone">{location.zone}</td>
+              <td data-label="Room">{location.roomName ?? '—'}</td>
               <td data-label="Type">{KIND_LABELS[location.kind]}</td>
               <td data-label="Units here" className="right num">
-                {
-                  state.units.filter(
-                    (unit) => unit.locationId === location.id && unit.status !== 'retired',
-                  ).length
-                }
+                {location.unitCount}
               </td>
             </tr>
           ))}
@@ -453,8 +464,15 @@ function LocationsSection({ editable }: { editable: boolean }) {
       </table>
       {editable && (
         <div className="save-bar">
-          <span>Work areas and the client site are built in.</span>
-          <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>
+          <span>Shelves sit inside a room; units are stocked on shelves.</span>
+          <Button
+            size="sm"
+            icon={Plus}
+            onClick={() => {
+              setParentId(rooms[0]?.id ?? '');
+              setAdding(true);
+            }}
+          >
             Add shelf
           </Button>
         </div>
@@ -463,12 +481,19 @@ function LocationsSection({ editable }: { editable: boolean }) {
         <ActionDialog
           title="Add a shelf"
           confirmLabel="Add shelf"
+          canConfirm={name.trim() !== '' && code.trim() !== '' && parentId !== ''}
           onClose={() => setAdding(false)}
-          onConfirm={() => {
-            store.addLocation(user.username, name, zone);
+          onConfirm={async (key) => {
+            await apiSend(
+              'POST',
+              '/locations',
+              { kind: 'shelf', code: code.trim(), name: name.trim(), parentId },
+              key,
+            );
+            await invalidate('locations', 'bootstrap');
             toast(`${name.trim()} added`);
             setName('');
-            setZone('');
+            setCode('');
           }}
         >
           <Field label="Name">
@@ -479,12 +504,19 @@ function LocationsSection({ editable }: { editable: boolean }) {
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
-          <Field label="Zone">
+          <Field label="Code" hint="Printed on the shelf label: letters, digits and dashes.">
             <input
-              className="input"
-              value={zone}
-              placeholder="UPS aisle"
-              onChange={(event) => setZone(event.target.value)}
+              className="input mono"
+              value={code}
+              placeholder="SH-H01"
+              onChange={(event) => setCode(event.target.value.toUpperCase())}
+            />
+          </Field>
+          <Field label="Room">
+            <Select
+              value={parentId}
+              onChange={setParentId}
+              options={rooms.map((room) => ({ value: room.id, label: room.name }))}
             />
           </Field>
         </ActionDialog>
@@ -620,19 +652,14 @@ function SecuritySection({ editable }: { editable: boolean }) {
   const draft = useSettingsDraft();
   const rows: { field: keyof SettingsData; title: string; hint: string }[] = [
     {
-      field: 'sessionMinutes',
-      title: 'Sign out after inactivity (minutes)',
-      hint: 'An idle session ends by itself.',
-    },
-    {
-      field: 'passwordMinLength',
-      title: 'Minimum password length',
-      hint: 'Applies when a password is set or changed.',
+      field: 'sessionIdleHours',
+      title: 'Sign out after inactivity (hours)',
+      hint: 'An idle session ends by itself; "remember me" keeps a session for up to 7 days.',
     },
     {
       field: 'lockAfterFailedAttempts',
       title: 'Lock after failed sign-ins',
-      hint: 'Wrong passwords in a row before a lockout.',
+      hint: 'Wrong passwords in a row before a 15-minute lockout.',
     },
   ];
   return (
@@ -641,63 +668,35 @@ function SecuritySection({ editable }: { editable: boolean }) {
         {rows.map((row) => (
           <NumberRow key={row.field} draft={draft} editable={editable} {...row} />
         ))}
+        <Row
+          title="Minimum password length"
+          hint="Applies whenever a password is set or changed. Fixed by design."
+        >
+          <span className="num">12 characters</span>
+        </Row>
       </div>
       <SaveBar draft={draft} editable={editable} />
     </>
   );
 }
 
-function DataSection({ editable }: { editable: boolean }) {
-  const store = useStore();
-  const toast = useToast();
-  const state = useWmsState();
-  const [confirming, setConfirming] = useState(false);
-
+function DataSection({ editable: _editable }: { editable: boolean }) {
   return (
     <div className="card-pad" style={{ paddingTop: 0 }}>
       <Row
         title="Automatic backups"
-        hint="Daily database backups and security updates are part of the subscription."
+        hint="Nightly encrypted database backups and security updates are part of the subscription."
       >
         <span className="chip" data-tone="in_stock">
           Included
         </span>
       </Row>
       <Row
-        title="Records in this demo"
-        hint="Kept in this browser only. Nothing is sent to a server."
+        title="History"
+        hint="Movements and the audit trail can never be edited or deleted, by anyone."
       >
-        <span className="num muted">
-          {state.units.length} units · {state.loans.length} transactions · {state.movements.length}{' '}
-          movements
-        </span>
+        <span className="chip plain">Append-only</span>
       </Row>
-      <Row
-        title="Reset demo data"
-        hint="Discards every change made in this browser and starts from fresh sample data."
-      >
-        <Button
-          variant="danger"
-          icon={RotateCcw}
-          disabled={!editable}
-          onClick={() => setConfirming(true)}
-        >
-          Reset
-        </Button>
-      </Row>
-      {confirming && (
-        <ActionDialog
-          title="Reset demo data?"
-          description="Every unit, request and setting you changed in this browser goes back to the sample data. This cannot be undone."
-          confirmLabel="Reset demo data"
-          danger
-          onClose={() => setConfirming(false)}
-          onConfirm={() => {
-            store.reset();
-            toast('Demo data reset');
-          }}
-        />
-      )}
     </div>
   );
 }

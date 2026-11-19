@@ -1,13 +1,27 @@
-import { Check, Pencil, Search, UserPlus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  ACTION_LABELS,
+  ACTIONS,
+  can,
+  ROLE_LABELS,
+  ROLE_SUMMARIES,
+  STAFF_ROLES,
+  type AccessLink,
+  type AuditEntry,
+  type StaffRole,
+  type User,
+} from '@wms/contracts';
+import { Check, Copy, KeyRound, Pencil, Search, UserPlus } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { apiSend, newIntentKey } from '../api/client.js';
+import { useAudit, useDebounced, useInvalidate, useUsers } from '../api/queries.js';
 import { useAuth, useCurrentUser } from '../auth/auth.js';
 import { Select, SkPage } from '../components/controls.js';
-import { usePageReady } from '../lib/hooks.js';
 import { ActionDialog } from '../components/dialogs.js';
 import {
   Avatar,
   Button,
+  Dialog,
   Empty,
   Field,
   PageHead,
@@ -17,17 +31,8 @@ import {
   useToast,
   type TabItem,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import {
-  ACTION_LABELS,
-  can,
-  ROLE_LABELS,
-  ROLE_SUMMARIES,
-  type Action,
-} from '../data/permissions.js';
-import { WmsError } from '../data/store.js';
-import type { Role, User } from '../data/types.js';
 import { formatDateTime, formatRelative } from '../lib/dates.js';
+import { useSubmit } from '../lib/hooks.js';
 
 type TabId = 'users' | 'roles' | 'activity';
 
@@ -37,20 +42,35 @@ const TABS: TabItem<TabId>[] = [
   { id: 'activity', label: 'Activity log' },
 ];
 
-const ROLES: Role[] = ['admin', 'manager', 'warehouse', 'auditor'];
 const PAGE_SIZE = 15;
 
 function isTabId(value: string | null): value is TabId {
   return TABS.some((tab) => tab.id === value);
 }
 
+/** One line for an audit entry: its label and the values that may be shown. */
+export function describeEntry(entry: AuditEntry): string {
+  const parts: string[] = [];
+  for (const [field, value] of Object.entries(entry.fields)) {
+    if (value === null || value === undefined || field === 'label') continue;
+    const shown = Array.isArray(value)
+      ? value.join(', ')
+      : typeof value === 'object'
+        ? Object.keys(value).join(', ')
+        : String(value);
+    parts.push(value === true ? field : `${field}: ${shown}`);
+  }
+  const label = typeof entry.fields.label === 'string' ? entry.fields.label : null;
+  return [label, parts.join(' · ')].filter(Boolean).join(' · ');
+}
+
 export function Users() {
-  const ready = usePageReady();
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'users';
   const { can: allowed } = useAuth();
   const [editing, setEditing] = useState<User | 'new' | null>(null);
+  const [link, setLink] = useState<AccessLink | null>(null);
 
   return (
     <div className="page">
@@ -66,46 +86,53 @@ export function Users() {
           )
         }
       />
-      {!ready ? (
-        <SkPage kind="table" />
-      ) : (
-        <div className="stack">
-          <Tabs
-            tabs={TABS}
-            value={tab}
-            onChange={(next) => setParams({ tab: next }, { replace: true })}
-            label="Users"
-          />
-          {tab === 'users' && <UserTable onEdit={setEditing} />}
-          {tab === 'roles' && <RoleMatrix />}
-          {tab === 'activity' && <ActivityLog />}
-        </div>
-      )}
+      <div className="stack">
+        <Tabs
+          tabs={TABS}
+          value={tab}
+          onChange={(next) => setParams({ tab: next }, { replace: true })}
+          label="Users"
+        />
+        {tab === 'users' && <UserTable onEdit={setEditing} onLink={setLink} />}
+        {tab === 'roles' && <RoleMatrix />}
+        {tab === 'activity' && <ActivityLog />}
+      </div>
       {editing && (
-        <UserDialog user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
+        <UserDialog
+          user={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onCreated={setLink}
+        />
       )}
+      {link && <LinkDialog link={link} onClose={() => setLink(null)} />}
     </div>
   );
 }
 
-function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
-  const { users } = useWmsState();
-  const store = useStore();
+function UserTable({
+  onEdit,
+  onLink,
+}: {
+  onEdit: (user: User) => void;
+  onLink: (link: AccessLink) => void;
+}) {
   const me = useCurrentUser();
   const { can: allowed } = useAuth();
-  const toast = useToast();
+  const [page, setPage] = useState(1);
+  const users = useUsers({ page, pageSize: PAGE_SIZE }, allowed('users.manage'));
   const now = new Date();
   const manage = allowed('users.manage');
 
-  const toggle = (user: User, active: boolean) => {
-    try {
-      store.setUserActive(me.username, user.username, active);
-      toast(`${user.name} ${active ? 'reactivated' : 'deactivated'}`);
-    } catch (error) {
-      if (!(error instanceof WmsError)) throw error;
-      toast(error.message, 'error');
-    }
-  };
+  if (!manage) {
+    return (
+      <div className="card">
+        <Empty title="Only administrators manage users">
+          Your own details are on your profile page.
+        </Empty>
+      </div>
+    );
+  }
+  if (!users.data) return <SkPage kind="table" />;
 
   return (
     <div className="card table-card">
@@ -115,14 +142,14 @@ function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
             <th>User</th>
             <th>Username</th>
             <th>Role</th>
-            <th>Last active</th>
+            <th>Last sign-in</th>
             <th>Active</th>
-            {manage && <th className="right">Edit</th>}
+            <th className="right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => (
-            <tr key={user.username}>
+          {users.data.items.map((user) => (
+            <tr key={user.id}>
               <td data-label="User">
                 <span className="unit-cell">
                   <Avatar name={user.name} />
@@ -139,42 +166,145 @@ function UserTable({ onEdit }: { onEdit: (user: User) => void }) {
               </td>
               <td data-label="Role">
                 <span className="chip plain">{ROLE_LABELS[user.role]}</span>
+                {user.status === 'invited' && <span className="cell-sub"> · invited</span>}
               </td>
-              <td data-label="Last active">
-                {user.lastActiveAt ? formatRelative(user.lastActiveAt, now) : 'Never'}
+              <td data-label="Last sign-in">
+                {user.lastLoginAt ? formatRelative(user.lastLoginAt, now) : 'Never'}
               </td>
               <td data-label="Active">
-                <Switch
-                  checked={user.active}
-                  disabled={!manage}
-                  label={`${user.name} can sign in`}
-                  onChange={(next) => toggle(user, next)}
+                <ActiveSwitch
+                  user={user}
+                  disabled={user.id === me.id || user.status === 'invited'}
                 />
               </td>
-              {manage && (
-                <td data-label="" className="right">
+              <td data-label="" className="right">
+                <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                  {user.status !== 'deactivated' && <LinkButton user={user} onLink={onLink} />}
                   <Button size="sm" icon={Pencil} onClick={() => onEdit(user)}>
                     Edit
                   </Button>
-                </td>
-              )}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <TableFoot
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={users.data.total}
+        noun="users"
+        onPage={setPage}
+      />
     </div>
   );
 }
 
+/** Deactivation signs the person out everywhere on their next click; reactivation restores access. */
+function ActiveSwitch({ user, disabled }: { user: User; disabled: boolean }) {
+  const submit = useSubmit();
+  const toast = useToast();
+  const invalidate = useInvalidate();
+  return (
+    <Switch
+      checked={user.status === 'active'}
+      disabled={disabled || submit.pending}
+      label={`${user.name} can sign in`}
+      onChange={(next) => {
+        void submit
+          .run(async () => {
+            await apiSend(
+              'POST',
+              `/users/${user.id}/${next ? 'reactivate' : 'deactivate'}`,
+              {},
+              newIntentKey(),
+            );
+            await invalidate('users');
+            toast(`${user.name} ${next ? 'reactivated' : 'deactivated'}`);
+          })
+          .then((done) => {
+            if (!done) toast(submit.error ?? 'That did not work', 'error');
+          });
+      }}
+    />
+  );
+}
+
+/** The one-time invitation or reset link, for an admin to hand over while no mail provider is set. */
+function LinkButton({ user, onLink }: { user: User; onLink: (link: AccessLink) => void }) {
+  const submit = useSubmit();
+  const toast = useToast();
+  const key = useRef(newIntentKey());
+  return (
+    <Button
+      size="sm"
+      icon={KeyRound}
+      pending={submit.pending}
+      title={
+        user.status === 'invited' ? 'Create an invitation link' : 'Create a password reset link'
+      }
+      onClick={() => {
+        void submit
+          .run(async () => {
+            const link = await apiSend<AccessLink>(
+              'POST',
+              `/users/${user.id}/access-link`,
+              {},
+              key.current,
+            );
+            key.current = newIntentKey();
+            onLink(link);
+          })
+          .then((done) => {
+            if (!done) toast(submit.error ?? 'That did not work', 'error');
+          });
+      }}
+    >
+      {user.status === 'invited' ? 'Invite link' : 'Reset link'}
+    </Button>
+  );
+}
+
+function LinkDialog({ link, onClose }: { link: AccessLink; onClose: () => void }) {
+  const toast = useToast();
+  return (
+    <Dialog
+      title={link.purpose === 'invite' ? 'Invitation link' : 'Password reset link'}
+      description={`Send this to the person yourself. It works once and expires ${formatDateTime(link.expiresAt)}. It is not shown again.`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Done</Button>
+          <Button
+            variant="primary"
+            icon={Copy}
+            onClick={() => {
+              void navigator.clipboard.writeText(link.url).then(() => toast('Link copied'));
+            }}
+          >
+            Copy link
+          </Button>
+        </>
+      }
+    >
+      <input
+        className="input mono"
+        readOnly
+        value={link.url}
+        onFocus={(event) => event.target.select()}
+      />
+    </Dialog>
+  );
+}
+
 function RoleMatrix() {
-  const actions = Object.keys(ACTION_LABELS) as Action[];
   return (
     <div className="card table-card">
       <table className="table matrix">
         <thead>
           <tr>
             <th>Permission</th>
-            {ROLES.map((role) => (
+            {STAFF_ROLES.map((role) => (
               <th key={role} title={ROLE_SUMMARIES[role]}>
                 {ROLE_LABELS[role]}
               </th>
@@ -182,12 +312,12 @@ function RoleMatrix() {
           </tr>
         </thead>
         <tbody>
-          {actions.map((action) => (
+          {ACTIONS.map((action) => (
             <tr key={action}>
               <td data-label="Permission">
                 <span className="cell-main">{ACTION_LABELS[action]}</span>
               </td>
-              {ROLES.map((role) => (
+              {STAFF_ROLES.map((role) => (
                 <td key={role} data-label={ROLE_LABELS[role]}>
                   {can(role, action) ? (
                     <>
@@ -210,25 +340,19 @@ function RoleMatrix() {
 }
 
 function ActivityLog() {
-  const { audit, users } = useWmsState();
+  const { can: allowed } = useAuth();
   const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const nameOf = useMemo(() => new Map(users.map((user) => [user.username, user.name])), [users]);
-
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const newestFirst = [...audit].reverse();
-    if (!needle) return newestFirst;
-    return newestFirst.filter((entry) =>
-      `${entry.actor} ${nameOf.get(entry.actor) ?? ''} ${entry.action} ${entry.target} ${entry.detail}`
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [audit, query, nameOf]);
-
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount);
-  const visible = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const needle = useDebounced(query.trim().toLowerCase());
+  const audit = useAudit(allowed('audit.read') ? {} : { actor: 'me' });
+  const entries = (audit.data?.pages ?? []).flatMap((page) => page.items);
+  // The loaded entries are filtered in place; "load more" fetches older ones from the server.
+  const visible = needle
+    ? entries.filter((entry) =>
+        `${entry.actor?.name ?? ''} ${entry.actor?.username ?? ''} ${entry.action} ${describeEntry(entry)}`
+          .toLowerCase()
+          .includes(needle),
+      )
+    : entries;
 
   return (
     <div className="card table-card">
@@ -241,15 +365,14 @@ function ActivityLog() {
             type="search"
             placeholder="Search by person, action, or asset code…"
             value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </label>
       </div>
-      {visible.length === 0 ? (
-        <Empty title="No activity matches">Try a shorter search.</Empty>
+      {!audit.data ? (
+        <SkPage kind="table" />
+      ) : visible.length === 0 ? (
+        <Empty title="No activity matches">Try a shorter search, or load older entries.</Empty>
       ) : (
         <table className="table">
           <thead>
@@ -257,7 +380,6 @@ function ActivityLog() {
               <th>When</th>
               <th>Who</th>
               <th>Action</th>
-              <th>Record</th>
               <th>Detail</th>
             </tr>
           </thead>
@@ -267,65 +389,92 @@ function ActivityLog() {
                 <td data-label="When" className="num">
                   {formatDateTime(entry.at)}
                 </td>
-                <td data-label="Who">{nameOf.get(entry.actor) ?? entry.actor}</td>
+                <td data-label="Who">{entry.actor?.name ?? 'System'}</td>
                 <td data-label="Action" className="mono">
                   {entry.action}
                 </td>
-                <td data-label="Record" className="mono">
-                  {entry.target}
-                </td>
-                <td data-label="Detail">{entry.detail || '—'}</td>
+                <td data-label="Detail">{describeEntry(entry) || '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <TableFoot
-        page={current}
-        pageSize={PAGE_SIZE}
-        total={rows.length}
-        noun="entries"
-        onPage={setPage}
-      />
+      {audit.hasNextPage && (
+        <div className="card-pad">
+          <Button
+            size="sm"
+            pending={audit.isFetchingNextPage}
+            onClick={() => void audit.fetchNextPage()}
+          >
+            Load older entries
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-function UserDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
-  const store = useStore();
-  const me = useCurrentUser();
+function UserDialog({
+  user,
+  onClose,
+  onCreated,
+}: {
+  user: User | null;
+  onClose: () => void;
+  onCreated: (link: AccessLink) => void;
+}) {
   const toast = useToast();
+  const invalidate = useInvalidate();
   const [username, setUsername] = useState(user?.username ?? '');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [title, setTitle] = useState(user?.title ?? '');
-  const [role, setRole] = useState<Role>(user?.role ?? 'warehouse');
+  const [role, setRole] = useState<StaffRole>(
+    user && user.role in ROLE_SUMMARIES ? (user.role as StaffRole) : 'warehouse',
+  );
 
   return (
     <ActionDialog
       title={user ? `Edit ${user.name}` : 'Add a user'}
       description={
-        user ? undefined : 'Demo build: the new account signs in with the shared demo password.'
+        user
+          ? undefined
+          : 'The person is invited: you get a one-time link to send them, and they choose their own password.'
       }
       confirmLabel={user ? 'Save changes' : 'Add user'}
       width={560}
+      canConfirm={username.trim() !== '' && name.trim() !== '' && email.includes('@')}
       onClose={onClose}
-      onConfirm={() => {
+      onConfirm={async (key) => {
+        const body = {
+          username: username.trim(),
+          name: name.trim(),
+          email: email.trim(),
+          title: title.trim() || null,
+          role,
+        };
         if (user) {
-          store.updateUser(me.username, user.username, { name, email, title, role });
-          toast(`${name} updated`);
+          await apiSend('PATCH', `/users/${user.id}`, body, key);
+          toast(`${body.name} updated`);
         } else {
-          store.addUser(me.username, { username, name, email, title, role });
-          toast(`${name} added`);
+          const created = await apiSend<User>('POST', '/users', body, key);
+          const link = await apiSend<AccessLink>(
+            'POST',
+            `/users/${created.id}/access-link`,
+            {},
+            `${key}:link`,
+          );
+          toast(`${body.name} added`);
+          onCreated(link);
         }
+        await invalidate('users');
       }}
     >
       <div className="form-grid cols-2">
-        <Field label="Username" hint={user ? 'A username cannot be changed.' : undefined}>
+        <Field label="Username" hint="Lower case letters, digits, dot, dash or underscore.">
           <input
             className="input mono"
             value={username}
-            disabled={user !== null}
             autoCapitalize="none"
             spellCheck={false}
             onChange={(event) => setUsername(event.target.value)}
@@ -352,8 +501,8 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
         <Field label="Role" hint={ROLE_SUMMARIES[role]} className="span-2">
           <Select
             value={role}
-            onChange={(value) => setRole(value as Role)}
-            options={ROLES.map((item) => ({ value: item, label: ROLE_LABELS[item] }))}
+            onChange={(value) => setRole(value as StaffRole)}
+            options={STAFF_ROLES.map((item) => ({ value: item, label: ROLE_LABELS[item] }))}
           />
         </Field>
       </div>

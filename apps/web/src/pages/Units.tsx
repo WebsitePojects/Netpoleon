@@ -1,9 +1,18 @@
+import type { BulkResult, ConditionGrade, Model, Unit } from '@wms/contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, Plus } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, useCurrentUser } from '../auth/auth.js';
-import { CONDITION_OPTIONS, Select, SuggestInput } from '../components/controls.js';
-import { DataTable, runBatch, type Column, type TableFilter } from '../components/DataTable.js';
+import { apiSend, exportUrl, newIntentKey } from '../api/client.js';
+import { keys, useDebounced, useInvalidate, useUnits } from '../api/queries.js';
+import { useAuth, useReference } from '../auth/auth.js';
+import { Select, SuggestInput } from '../components/controls.js';
+import {
+  DataTable,
+  readTableState,
+  type Column,
+  type TableFilter,
+} from '../components/DataTable.js';
 import { ShelfDialog } from '../components/dialogs.js';
 import {
   Button,
@@ -15,40 +24,45 @@ import {
   StatusChip,
   useToast,
 } from '../components/ui.js';
-import { useStore, useWmsState } from '../data/context.js';
-import { ACTIVE_STATUSES, STATUS_LABELS } from '../data/selectors.js';
-import { WmsError } from '../data/store.js';
-import type { ConditionGrade, Unit, UnitStatus } from '../data/types.js';
-import { usePageReady, useSubmit } from '../lib/hooks.js';
+import { ACTIVE_STATUSES, CONDITION_LABELS, STATUS_LABELS } from '../lib/labels.js';
+import { useSubmit } from '../lib/hooks.js';
 
-const STATUS_OPTIONS: UnitStatus[] = [...ACTIVE_STATUSES, 'retired'];
+const PAGE_SIZE = 10;
+const FILTERS = ['status', 'category', 'location'] as const;
+const STATUS_OPTIONS = [...ACTIVE_STATUSES, 'retired'] as const;
+export const CONDITION_OPTIONS = (Object.keys(CONDITION_LABELS) as ConditionGrade[]).map(
+  (value) => ({
+    value,
+    label: CONDITION_LABELS[value],
+  }),
+);
 
 export function Units() {
-  const state = useWmsState();
-  const store = useStore();
-  const user = useCurrentUser();
+  const { categories, locations } = useReference();
   const { can } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
-  const ready = usePageReady();
+  const invalidate = useInvalidate();
   const [params] = useSearchParams();
   const [adding, setAdding] = useState(false);
   const [moving, setMoving] = useState<{ units: Unit[]; clear: () => void } | null>(null);
 
-  const categoryName = useMemo(
-    () => new Map(state.categories.map((item) => [item.code, item.name])),
-    [state.categories],
-  );
-  const locationName = useMemo(
-    () => new Map(state.locations.map((item) => [item.id, item.name])),
-    [state.locations],
-  );
+  const table = readTableState(params, FILTERS);
+  const q = useDebounced(table.q.trim());
+  const query = {
+    page: table.page,
+    pageSize: PAGE_SIZE,
+    q: q || undefined,
+    ...table.sort,
+    status: table.filters.status || undefined,
+    category: table.filters.category || undefined,
+    location: table.filters.location || undefined,
+  };
+  const units = useUnits(query);
 
-  // Retired units stay out of the list until the status filter asks for them.
-  const showRetired = params.get('status') === 'retired';
-  const rows = useMemo(
-    () => state.units.filter((unit) => showRetired || unit.status !== 'retired'),
-    [state.units, showRetired],
+  const categoryName = useMemo(
+    () => new Map(categories.map((item) => [item.code, item.name])),
+    [categories],
   );
 
   const columns: Column<Unit>[] = [
@@ -75,7 +89,6 @@ export function Units() {
       id: 'category',
       header: 'Category',
       skeleton: 110,
-      sort: (unit) => categoryName.get(unit.categoryCode) ?? unit.categoryCode,
       cell: (unit) => categoryName.get(unit.categoryCode) ?? unit.categoryCode,
     },
     {
@@ -92,24 +105,23 @@ export function Units() {
       width: '1.2fr',
       skeleton: 130,
       className: 'mono',
-      sort: (unit) => unit.serial,
       cell: (unit) => unit.serial,
     },
     {
-      id: 'state',
+      id: 'status',
       header: 'Current Status',
       label: 'Status',
       skeleton: 'chip',
-      sort: (unit) => STATUS_LABELS[unit.status],
+      sort: (unit) => unit.status,
       cell: (unit) => <StatusChip status={unit.status} reserved={unit.reservedFor !== null} />,
     },
     {
-      id: 'shelf',
+      id: 'location',
       header: 'Location',
       width: '0.9fr',
       skeleton: 90,
-      sort: (unit) => locationName.get(unit.locationId) ?? '',
-      cell: (unit) => locationName.get(unit.locationId) ?? '—',
+      sort: (unit) => unit.location?.name ?? '',
+      cell: (unit) => unit.location?.name ?? '—',
     },
   ];
 
@@ -119,23 +131,27 @@ export function Units() {
       label: 'Status',
       allLabel: 'All statuses',
       options: STATUS_OPTIONS.map((item) => ({ value: item, label: STATUS_LABELS[item] })),
-      test: (unit, value) => unit.status === value,
+      test: () => true,
     },
     {
       id: 'category',
       label: 'Category',
       allLabel: 'All categories',
-      options: state.categories.map((item) => ({ value: item.code, label: item.name })),
-      test: (unit, value) => unit.categoryCode === value,
+      options: categories.map((item) => ({ value: item.code, label: item.name })),
+      test: () => true,
     },
     {
       id: 'location',
       label: 'Location',
       allLabel: 'All locations',
-      options: state.locations.map((item) => ({ value: item.id, label: item.name })),
-      test: (unit, value) => unit.locationId === value,
+      options: locations
+        .filter((item) => item.kind === 'shelf')
+        .map((item) => ({ value: item.id, label: item.name })),
+      test: () => true,
     },
   ];
+
+  const { page: _page, pageSize: _size, ...exportFilters } = query;
 
   return (
     <div className="page">
@@ -153,16 +169,18 @@ export function Units() {
 
       <div className="card table-card">
         <DataTable
-          rows={rows}
+          rows={units.data?.items ?? []}
           columns={columns}
           rowKey={(unit) => unit.code}
           noun="demo units"
-          loading={!ready}
+          pageSize={PAGE_SIZE}
+          loading={units.isPending}
           syncUrl
-          search={{
-            placeholder: 'Search by asset code, model, or serial number…',
-            text: (unit) => `${unit.code} ${unit.serial} ${unit.brand} ${unit.model}`,
+          server={{
+            total: units.data?.total ?? 0,
+            exportHref: exportUrl('/units/export.csv', exportFilters),
           }}
+          search={{ placeholder: 'Search by asset code, model, or serial number…', text: () => '' }}
           filters={filters}
           onRowClick={(unit) => void navigate(`/units/${unit.code}`)}
           batchActions={
@@ -171,7 +189,7 @@ export function Units() {
                   {
                     label: 'Move to shelf',
                     icon: ArrowRightLeft,
-                    run: (units, clear) => setMoving({ units, clear }),
+                    run: (rows, clear) => setMoving({ units: rows, clear }),
                   },
                 ]
               : []
@@ -195,8 +213,8 @@ export function Units() {
               unit.model,
               unit.serial,
               STATUS_LABELS[unit.status],
-              locationName.get(unit.locationId) ?? '',
-              unit.condition,
+              unit.location?.name ?? '',
+              unit.condition.toUpperCase(),
             ],
           }}
         />
@@ -210,17 +228,26 @@ export function Units() {
           confirmLabel="Move units"
           currentId=""
           onClose={() => setMoving(null)}
-          onConfirm={(locationId) => {
-            const result = runBatch(moving.units, (unit) =>
-              store.moveUnit(user.username, unit.code, locationId),
+          onConfirm={async (locationId, key) => {
+            const { results } = await apiSend<BulkResult>(
+              'POST',
+              '/units/bulk-relocate',
+              { codes: moving.units.map((unit) => unit.code), locationId },
+              key,
             );
-            if (result.done === 0) throw new WmsError(result.refused);
-            const shelf = locationName.get(locationId) ?? 'the shelf';
-            const skipped = moving.units.length - result.done;
+            const done = results.filter((row) => row.ok).length;
+            const shelf = locations.find((item) => item.id === locationId)?.name ?? 'the shelf';
+            await invalidate('units', 'dashboard');
+            if (done === 0) {
+              const first = results.find((row) => !row.ok);
+              toast(first && !first.ok ? first.message : 'No unit could be moved', 'error');
+              return;
+            }
+            const skipped = results.length - done;
             toast(
               skipped === 0
-                ? `${result.done} moved to ${shelf}`
-                : `${result.done} moved to ${shelf}, ${skipped} skipped`,
+                ? `${done} moved to ${shelf}`
+                : `${done} moved to ${shelf}, ${skipped} skipped`,
             );
             moving.clear();
           }}
@@ -230,47 +257,68 @@ export function Units() {
   );
 }
 
+const NEW_MODEL = '__new__';
+
 function RegisterDialog({ onClose }: { onClose: () => void }) {
-  const store = useStore();
-  const state = useWmsState();
-  const user = useCurrentUser();
+  const { categories, locations, models } = useReference();
+  const { can } = useAuth();
+  const client = useQueryClient();
+  const invalidate = useInvalidate();
   const navigate = useNavigate();
   const toast = useToast();
   const submit = useSubmit();
+  const intentKey = useRef(newIntentKey());
 
-  const [categoryCode, setCategoryCode] = useState(state.categories[0]?.code ?? '');
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
+  const inCategory = models.filter((model) => model.category.id === categoryId);
+  const [modelId, setModelId] = useState(inCategory[0]?.id ?? NEW_MODEL);
   const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [serial, setSerial] = useState('');
-  const [condition, setCondition] = useState<ConditionGrade>('A');
+  const [modelName, setModelName] = useState('');
   const [accessories, setAccessories] = useState('');
+  const [serial, setSerial] = useState('');
+  const [condition, setCondition] = useState<ConditionGrade>('a');
   const [notes, setNotes] = useState('');
-  const shelves = state.locations.filter((item) => item.kind !== 'site');
+  const shelves = locations.filter((item) => item.kind === 'shelf');
   const [locationId, setLocationId] = useState(shelves[0]?.id ?? '');
-
-  /** Known models in the chosen category, offered as suggestions; a new model can be typed. */
-  const knownModels = useMemo(() => {
-    const seen = new Map<string, { brand: string; model: string; accessories: string[] }>();
-    for (const unit of state.units) {
-      if (unit.categoryCode === categoryCode) seen.set(`${unit.brand} ${unit.model}`, unit);
-    }
-    return [...seen.values()];
-  }, [state.units, categoryCode]);
+  const creatingModel = modelId === NEW_MODEL;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     void submit
-      .run(() => {
-        const unit = store.registerUnit(user.username, {
-          categoryCode,
-          brand,
-          model,
-          serial,
-          locationId,
-          condition,
-          accessories: accessories.split(','),
-          notes,
-        });
+      .run(async () => {
+        let chosen = modelId;
+        if (creatingModel) {
+          // Derived keys: a retry after a timeout replays both steps instead of repeating them.
+          const created = await apiSend<{ id: string }>(
+            'POST',
+            '/models',
+            {
+              categoryId,
+              brand: brand.trim(),
+              name: modelName.trim(),
+              accessories: accessories
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean),
+            },
+            `${intentKey.current}:model`,
+          );
+          chosen = created.id;
+          await client.invalidateQueries({ queryKey: keys.bootstrap });
+        }
+        const unit = await apiSend<Unit>(
+          'POST',
+          '/units',
+          {
+            modelId: chosen,
+            serial: serial.trim(),
+            condition,
+            locationId,
+            notes: notes.trim() || null,
+          },
+          `${intentKey.current}:unit`,
+        );
+        await invalidate('units', 'dashboard', 'reports');
         toast(`${unit.code} registered`);
         void navigate(`/units/${unit.code}`);
       })
@@ -278,6 +326,12 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
         if (saved) onClose();
       });
   };
+
+  const brands = [...new Set(models.map((model: Model) => model.brand))];
+  const valid =
+    serial.trim() !== '' &&
+    locationId !== '' &&
+    (!creatingModel || (brand.trim() !== '' && modelName.trim() !== ''));
 
   return (
     <Dialog
@@ -291,7 +345,13 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
           <Button onClick={onClose} disabled={submit.pending}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" form="register-unit" pending={submit.pending}>
+          <Button
+            variant="primary"
+            type="submit"
+            form="register-unit"
+            pending={submit.pending}
+            disabled={!valid}
+          >
             Register unit
           </Button>
         </>
@@ -300,43 +360,63 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
       <form id="register-unit" className="form-grid cols-2" onSubmit={onSubmit} noValidate>
         <Field label="Category">
           <Select
-            value={categoryCode}
-            onChange={setCategoryCode}
-            options={state.categories.map((item) => ({
-              value: item.code,
+            value={categoryId}
+            onChange={(value) => {
+              setCategoryId(value);
+              setModelId(models.find((model) => model.category.id === value)?.id ?? NEW_MODEL);
+            }}
+            options={categories.map((item) => ({
+              value: item.id,
               label: item.name,
               hint: item.code,
             }))}
           />
         </Field>
-        <Field label="Brand">
-          <SuggestInput
-            value={brand}
-            onChange={setBrand}
-            placeholder="Fortinet"
-            suggestions={[...new Set(knownModels.map((item) => item.brand))]}
-          />
-        </Field>
         <Field label="Model">
-          <SuggestInput
-            value={model}
-            placeholder="FG-60F"
-            suggestions={knownModels
-              .filter((item) => !brand || item.brand === brand)
-              .map((item) => item.model)}
-            onChange={(value) => {
-              setModel(value);
-              // Picking a known model fills in the accessories it normally ships with.
-              const known = knownModels.find(
-                (item) => item.model === value && (!brand || item.brand === brand),
-              );
-              if (known) {
-                setBrand(known.brand);
-                if (!accessories) setAccessories(known.accessories.join(', '));
-              }
-            }}
+          <Select
+            value={modelId}
+            onChange={setModelId}
+            options={[
+              ...inCategory.map((model) => ({
+                value: model.id,
+                label: `${model.brand} ${model.name}`,
+              })),
+              ...(can('catalog.manage') ? [{ value: NEW_MODEL, label: 'New model…' }] : []),
+            ]}
           />
         </Field>
+        {creatingModel && (
+          <>
+            <Field label="Brand">
+              <SuggestInput
+                value={brand}
+                onChange={setBrand}
+                placeholder="Fortinet"
+                suggestions={brands}
+              />
+            </Field>
+            <Field label="Model name">
+              <input
+                className="input"
+                value={modelName}
+                onChange={(event) => setModelName(event.target.value)}
+                placeholder="FG-60F"
+              />
+            </Field>
+            <Field
+              label="Accessories"
+              hint="Separate with commas. They become the release and return checklist."
+              className="span-2"
+            >
+              <input
+                className="input"
+                value={accessories}
+                onChange={(event) => setAccessories(event.target.value)}
+                placeholder="Power adapter, Console cable"
+              />
+            </Field>
+          </>
+        )}
         <Field label="Serial number">
           <input
             className="input mono"
@@ -351,7 +431,11 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
           <Select
             value={locationId}
             onChange={setLocationId}
-            options={shelves.map((item) => ({ value: item.id, label: item.name, hint: item.zone }))}
+            options={shelves.map((item) => ({
+              value: item.id,
+              label: item.name,
+              hint: item.roomName ?? '',
+            }))}
           />
         </Field>
         <Field label="Condition">
@@ -359,18 +443,6 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
             value={condition}
             onChange={(value) => setCondition(value as ConditionGrade)}
             options={CONDITION_OPTIONS}
-          />
-        </Field>
-        <Field
-          label="Accessories"
-          hint="Separate with commas. These become the release and return checklist."
-          className="span-2"
-        >
-          <input
-            className="input"
-            value={accessories}
-            onChange={(event) => setAccessories(event.target.value)}
-            placeholder="Power adapter, Console cable"
           />
         </Field>
         <Field label="Notes" className="span-2">

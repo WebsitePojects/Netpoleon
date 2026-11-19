@@ -6,7 +6,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "customConditions": ["wms-source"]
   },
   "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
 }
