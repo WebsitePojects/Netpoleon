@@ -75,3 +75,32 @@ jobs:
           web_uid="$(docker run --rm --entrypoint id wms-web-ci:${{ github.sha }} -u)"
           echo "image uid: ${uid}, web image uid: ${web_uid}"
           test "${uid}" != "0" && test "${web_uid}" != "0"
+
+  # Only main, only after every check above passed. The server pulls these by digest and never
+  # builds anything itself (spec section 10). This job alone may write packages.
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push both images
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          for target in runtime web; do
+            name="ghcr.io/${owner}/netpoleon-wms-$([ "$target" = runtime ] && echo api || echo web)"
+            docker build -f infra/docker/Dockerfile --target "$target" -t "${name}:${{ github.sha }}" -t "${name}:main" .
+            docker push "${name}:${{ github.sha }}"
+            docker push "${name}:main"
+            echo "${name}@$(docker inspect --format '{{index .RepoDigests 0}}' "${name}:${{ github.sha }}" | cut -d@ -f2)" >> "$GITHUB_STEP_SUMMARY"
+          done

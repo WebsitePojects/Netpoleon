@@ -4,15 +4,18 @@
 > When this file and the spec disagree, the spec wins and this file gets fixed.
 
 ## Shape
-A pnpm workspace. One deployable image runs as different commands (api, migrate, later worker).
+A pnpm workspace. Two images: `runtime` runs as different commands (api, worker, migrate, the
+CLIs) and `web` serves the console through nginx, which forwards `/api` (same origin).
 
 | Path | Owns | May import |
 |---|---|---|
 | `packages/config` | Reading and validating environment variables | nothing internal |
 | `packages/contracts` | Request/response schemas shared with the future frontend | nothing internal |
 | `packages/db` | SQL migrations, typed tables, the `Database` class | `config` |
-| `apps/api` | HTTP: routes, services, repositories | all three packages |
-| `infra/docker` | Dockerfile, compose files, proxy config | — |
+| `apps/api` | HTTP: routes, services, repositories; `src/worker` (outbox, jobs); `src/cli` (seed, admin-create) | all three packages |
+| `apps/web` | The console: React + TanStack Query, talking only to `/api/v1` | `contracts` |
+| `infra/docker` | Dockerfile (targets `runtime`, `web`), compose files, nginx and Caddy config | — |
+| `infra/scripts` | `backup.sh` (encrypted nightly dump), `restore-check.sh` | — |
 
 Imports go down that table only. A package never imports from `apps/`.
 
@@ -58,6 +61,14 @@ These hold even if application code is wrong. Each has an attack test in
 - Side effects (email, notifications) are written to `outbox` inside the transaction. Nothing
   is sent from a request handler.
 - "Today" is Asia/Manila, stated in the query. Containers run in UTC.
+- Every mutation takes an `Idempotency-Key` and calls `idempotent(tx, ctx, body, fn)` inside its
+  own transaction (`apps/api/src/platform/idempotency.ts`); the console makes one key per dialog.
+- A route gets its `RequestContext` only from `guard.require(request, action)`; the permission
+  table is `can()` in `packages/contracts/src/permissions.ts`, shared with the console.
+- Lists are offset-paged with a `total` (plan R2); the console's `DataTable` has a server mode
+  that keeps search, filters, sort and page in the URL for the page's query to read.
+- Repositories use drizzle's `sql` tag: arrays bind as `IN ${list}`, timestamps come back as
+  strings (see lessons 2026-11-19).
 - **Never insert into `assets` with Drizzle's `insert()`.** Drizzle names every column and sends
   `default` for the ones you omit, and Postgres checks privilege on every named column — so the
   statement names `status` and fails with 42501 by design. The asset repository inserts with

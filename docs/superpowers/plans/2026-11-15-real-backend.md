@@ -165,10 +165,18 @@ with `admin:create`. The repository should be private before any server detail i
 ## 8. Checklist (ticked when verified, not when written)
 
 - [x] Plan reviewed adversarially and corrected (section 9)
-- [ ] Wave 1 green · [ ] Wave 2 green · [ ] Wave 3 green
-- [ ] Attack list in section 6 run, results recorded
-- [ ] Speed budgets measured
-- [ ] Code map, architecture notes and lessons updated
+- [x] Wave 1 green · [x] Wave 2 green · [x] Wave 3 green
+  _2026-11-20: built by one builder then by the coordinator alone (owner's instruction). CI on
+  `feat/backend-slice-1`: 312 tests on real Postgres, secret scan, audit, both images non-root._
+- [x] Attack list in section 6 run, results recorded
+  _API tests: forged Origin, missing CSRF header, missing/reused idempotency key, concurrent
+  double approval, overlapping booking and buffer, auditor and manager permissions, deactivated
+  user's cookie, filer cannot decide, CSV formulas, unknown fields. Browser: full lifecycle as
+  three people over HTTPS on the production stack, double-clicked confirms make one change._
+- [x] Speed budgets measured
+  _Production stack: in-app navigation 45–129 ms first visit, 62–109 ms revisit; API p50 14 ms,
+  p95 40 ms; hashed assets immutable for a year, index.html revalidated, API no-store._
+- [x] Code map, architecture notes and lessons updated
 - [ ] Deployed and smoke-tested on the VPS
 
 ## 9. Corrections from the adversarial review (2026-11-15) — these override the text above

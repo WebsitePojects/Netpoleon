@@ -37,7 +37,7 @@ If a command is missing (for example `pm2` on a server without it), skip that li
 
 | Question                                                  | Answer comes from        | Consequence                                                                                   |
 | --------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------- |
-| Which host port can the API use?                          | `ss -ltnp`               | Set `API_PORT` to a port that is not listed. Never reuse a port because it is the default.    |
+| Which host port can the web container use?                | `ss -ltnp`               | Set `WEB_PORT` to a port that is not listed. Never reuse a port because it is the default.    |
 | Is there already a web server on 80 and 443?              | `ss -ltnp`, `nginx -t`   | Yes: add one new Nginx site file (section 6a), leave the `proxy` service off. No: use Caddy.  |
 | Is there enough memory?                                   | `free -h`, `docker ps`   | The stack's limits are in `infra/docker/compose.prod.yml`. Their sum must fit in free memory. |
 | Is Docker Compose v2 installed?                           | `docker compose version` | If not, stop and report. Do not install packages without a specific yes from the owner.       |
@@ -62,16 +62,20 @@ or `:` would corrupt the URL.
 | `WMS_MIGRATOR_PASSWORD`       | migrate                | Password of `wms_migrator`, the role that owns and alters the schema | yes    |
 | `WMS_STAFF_PASSWORD`          | migrate, api           | Password of `wms_staff`, used for staff sessions and background work | yes    |
 | `WMS_PARTNER_PASSWORD`        | migrate, api           | Password of `wms_partner`, used for every partner request            | yes    |
-| `WMS_IMAGE`                   | migrate, api           | Application image reference, pinned by digest                        | no     |
-| `APP_ORIGIN`                  | api                    | Public origin of the site, used for CORS and the CSRF origin check   | no     |
-| `API_PORT`                    | compose                | Loopback host port the API is published on                           | no     |
+| `WMS_IMAGE`                   | migrate, api, worker   | API image, pinned by digest (`ghcr.io/…/netpoleon-wms-api@sha256:…`) | no     |
+| `WMS_WEB_IMAGE`               | web                    | Console image, pinned by digest (`…/netpoleon-wms-web@sha256:…`)     | no     |
+| `APP_ORIGIN`                  | api, worker            | Public origin (`https://…`); the CSRF check and the links in mails   | no     |
+| `WEB_PORT`                    | compose                | Loopback host port the web container is published on (default 8080)  | no     |
+| `SMTP_URL`                    | api, worker            | `smtps://user:password@host:465`; unset = mails are only logged      | yes    |
+| `MAIL_FROM`                   | api, worker            | Sender, e.g. `Netpoleon WMS <wms@example.com>`; required with SMTP   | no     |
 | `POSTGRES_DB`                 | postgres, migrate, api | Database name                                                        | no     |
 | `LOG_LEVEL`                   | api                    | Minimum log level                                                    | no     |
 | `TRUST_PROXY`                 | api                    | Which proxy addresses may set the client IP header                   | no     |
 | `WMS_DOMAIN`                  | proxy                  | Domain Caddy obtains a certificate for; unused with Nginx            | no     |
 
-Required (compose stops with the variable's name if missing): the four passwords, `WMS_IMAGE`
-and `APP_ORIGIN`. The rest have defaults; the defaults for application settings are defined in
+Required (compose stops with the variable's name if missing): the four passwords, `WMS_IMAGE`,
+`WMS_WEB_IMAGE` and `APP_ORIGIN`. `APP_ORIGIN` must be `https://`: production refuses to start
+on plain HTTP, because the session cookie would travel in clear text. The rest have defaults; the defaults for application settings are defined in
 `packages/config/src/schema.ts`, and those for compose in `infra/docker/compose.prod.yml`.
 
 ### 3b. Set by compose, never by hand
@@ -108,8 +112,32 @@ Each step names its rollback. Do not run a step before the one above it has been
    `infra/docker/Caddyfile` to `/opt/wms/`.
    _Rollback:_ delete those two files.
 
-3. **Registry login and image pull.** _Written when the deploy step lands (build order step 9):
-   CI does not publish an image yet._
+3. **Registry login and image pull.** CI publishes both images to the GitHub Container Registry
+   on every green push to `main`; the job summary lists their digests. On the server, log in once
+   with a token that can only read packages (`read:packages`), typed at the prompt:
+
+   ```bash
+   docker login ghcr.io -u <github-user>          # paste the read-only token when asked
+   docker pull ghcr.io/websitepojects/netpoleon-wms-api@sha256:<digest>
+   docker pull ghcr.io/websitepojects/netpoleon-wms-web@sha256:<digest>
+   ```
+
+   Put those two `@sha256:` references in `WMS_IMAGE` and `WMS_WEB_IMAGE`.
+   _Rollback:_ `docker logout ghcr.io`; removing pulled images needs the owner's yes.
+
+4. **Backups.** Copy `infra/scripts/backup.sh` and `infra/scripts/restore-check.sh` to `/opt/wms/`,
+   create the encryption key, and add the two cron lines from the scripts' headers:
+
+   ```bash
+   install -m 700 backup.sh restore-check.sh /opt/wms/
+   openssl rand -base64 48 > /opt/wms/backup.key && chmod 600 /opt/wms/backup.key
+   crontab -e        # add the two lines quoted at the top of each script
+   ```
+
+   The key must also be stored somewhere off the server (a password manager): without it every
+   backup is unreadable. Set `OFFSITE_COMMAND` in the cron line once the owner chooses where
+   encrypted copies go (spec open item 9).
+   _Rollback:_ remove the two cron lines.
 
 ## 5. Start the stack
 
@@ -130,16 +158,29 @@ docker compose -p wms --env-file wms.env -f compose.prod.yml up -d
 docker compose -p wms --env-file wms.env -f compose.prod.yml ps
 ```
 
-Verify from the server itself (the API is bound to loopback):
+Verify from the server itself (only the web container is published, on loopback):
 
 ```bash
-curl -fsS http://127.0.0.1:<API_PORT>/healthz    # process is up
-curl -fsS http://127.0.0.1:<API_PORT>/readyz     # database reachable and migrations current
+curl -fsS http://127.0.0.1:<WEB_PORT>/healthz          # api process is up, through the web container
+docker compose -p wms --env-file wms.env -f compose.prod.yml exec api \
+  node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>r.text()).then(console.log)"   # database and migrations
+docker compose -p wms --env-file wms.env -f compose.prod.yml logs --tail 20 worker      # worker started, jobs ran
 ```
 
-_Rollback:_ `docker compose -p wms --env-file wms.env -f compose.prod.yml stop api`. Stopping the
+**First administrator** (once, on a new server). No default account exists anywhere; this
+creates one as invited and prints a one-time link to set its password:
+
+```bash
+docker compose -p wms --env-file wms.env -f compose.prod.yml run --rm api \
+  node apps/api/dist/cli/admin-create.js --username <name> --email <address> --name "<full name>"
+```
+
+It refuses if an administrator already exists. `--rm` matters: the printed link must not stay
+in a stopped container's log.
+
+_Rollback:_ `docker compose -p wms --env-file wms.env -f compose.prod.yml stop web api worker`. Stopping the
 `wms` project only touches containers whose names start with `wms-`. To go back to a previous
-version, set `WMS_IMAGE` to the previous digest and run `up -d` again; migrations are written so
+version, set `WMS_IMAGE` and `WMS_WEB_IMAGE` to the previous digests and run `up -d` again; migrations are written so
 the previous version keeps working. The database volume (`wms_pgdata`) is never removed without
 an explicit, specific yes from the owner.
 
@@ -155,8 +196,10 @@ server {
     listen 80;
     server_name <the-domain-for-this-system>;
 
+    client_max_body_size 1m;
+
     location / {
-        proxy_pass http://127.0.0.1:<API_PORT>;
+        proxy_pass http://127.0.0.1:<WEB_PORT>;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -179,11 +222,10 @@ systemctl reload nginx` again.
 Add `--profile proxy` to the compose commands in section 5 and set `WMS_DOMAIN`. Caddy obtains
 the certificate automatically once the domain resolves to the server.
 
-## 7. Not written yet
+## 7. Still open
 
-These are listed so nobody assumes they exist. Each is written when its feature lands.
-
-- Off-server encrypted backups and the restore drill (`docs/RUNBOOK.md`).
-- Creating the first administrator.
-- Image publishing and registry login.
-- Image vulnerability scanning in CI.
+- Image vulnerability scanning in CI (a scanner is not chosen yet).
+- Where encrypted backups go off the server, and the alert when no good backup exists from the
+  last 26 hours (spec section 15).
+- External uptime check on `/healthz` and alerting on a stale worker heartbeat
+  (`worker_heartbeats.beat_at`) or parked outbox rows (`outbox.status = 'failed'`).

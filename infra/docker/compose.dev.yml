@@ -14,7 +14,7 @@ services:
       POSTGRES_DB: wms
     # Loopback only: Docker bypasses the host firewall for published ports.
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${WMS_DEV_DB_PORT:-5432}:5432'
     # PostgreSQL 18 images keep the data directory under a versioned path inside
     # /var/lib/postgresql, so the volume mounts one level higher than in older images.
     volumes:

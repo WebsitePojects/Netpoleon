@@ -14,7 +14,9 @@ pnpm is not on PATH here: run it as `corepack pnpm …`.
 - `corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test`
   — the full local gate; tests start Postgres 18 through Testcontainers and need Docker
 - `corepack pnpm build` — compile every package to `dist/`
-- `docker build -f infra/docker/Dockerfile .` — the production image
+- `docker build -f infra/docker/Dockerfile --target runtime .` / `--target web` — the two images
+- `corepack pnpm --filter @wms/api dev` · `worker` · `seed:dev` · `admin:create`, and
+  `corepack pnpm --filter @wms/web dev` — run locally (full steps: `docs/RUNBOOK.md`)
 - No local Docker? Push to a `feat/*` branch; GitHub Actions runs the same gate with Docker
 - `graphify . --update` — refresh the code map in `graphify-out/` after structural changes
 
