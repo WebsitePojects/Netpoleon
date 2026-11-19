@@ -8,6 +8,12 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-20
+- **Postgres reads `POSTGRES_PASSWORD` only when the data volume is first created.** Changing
+  the superuser password in the env file afterwards does nothing; change it inside the database
+  first. App-role passwords are different: `migrate` re-runs role bootstrap, which resets them.
+- **Prove backups by restoring them.** `infra/scripts/restore-check.sh` decrypts the newest dump
+  into a throwaway database and counts rows; it passed on the local production stack, and the
+  dump file starts with `Salted__` (openssl ciphertext) with no readable asset codes in it.
 - **Never `queryClient.clear()` while a component is subscribed to a query you then re-seed.**
   Sign-in cleared the whole TanStack cache and then set the bootstrap query; the AuthProvider's
   observer stayed on the removed query, so the console was blank after signing in until a
