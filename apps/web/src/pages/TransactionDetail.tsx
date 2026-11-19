@@ -26,7 +26,7 @@ import {
   ReasonDialog,
   ScanField,
 } from '../components/dialogs.js';
-import { Button, Field, LoanChip, PageHead, StatusChip, useToast } from '../components/ui.js';
+import { Button, Field, LoanChip, PageHead, useToast } from '../components/ui.js';
 import { addDays, daysBetween, formatDate, formatDateTime } from '../lib/dates.js';
 import { NotFound } from './NotFound.js';
 

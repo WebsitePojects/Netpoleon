@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -14,7 +15,7 @@ export default defineConfig(
   ]),
   js.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     extends: [tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,
@@ -45,6 +46,16 @@ export default defineConfig(
   {
     files: ['apps/web/e2e/**/*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  // The console: hooks must be called unconditionally and their dependencies listed.
+  {
+    files: ['apps/web/src/**/*.tsx', 'apps/web/src/**/*.ts'],
+    languageOptions: { globals: globals.browser },
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
   // Last, so formatting is left entirely to Prettier.
   prettier,

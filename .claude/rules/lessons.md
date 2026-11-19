@@ -50,9 +50,9 @@
   bulk "Reject requests" on Borrow / Return called `store`, `user` and `toast` that `Borrow()`
   never fetched. Before judging a red branch, run the whole gate locally
   (`format:check && lint && typecheck && test`), not just the step CI reported.
-- **ESLint here only matches `**/*.ts` and `**/*.js`, so every `.tsx` file in `apps/web` is
-  unlinted.** Typecheck still covers them. Extending lint to `.tsx` (with React rules) is owed
-  work; expect findings when it is switched on.
+- **ESLint here only matched `**/*.ts` and `**/*.js`, so every `.tsx` file was unlinted.**
+  Fixed 2026-11-20: `.tsx` is in the type-aware block and `apps/web/src` gets the React hooks
+  rules. Switching it on found 9 small issues (unused imports, needless casts), no real bugs.
 
 ## 2026-11-14
 - **A blob drawn as a `polygon()` with independent random jitter per vertex always looks spiky.**

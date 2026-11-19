@@ -57,7 +57,9 @@ export function describeEntry(entry: AuditEntry): string {
       ? value.join(', ')
       : typeof value === 'object'
         ? Object.keys(value).join(', ')
-        : String(value);
+        : typeof value === 'string'
+          ? value
+          : JSON.stringify(value);
     parts.push(value === true ? field : `${field}: ${shown}`);
   }
   const label = typeof entry.fields.label === 'string' ? entry.fields.label : null;

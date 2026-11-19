@@ -102,7 +102,7 @@ export function Popover({
               '--from': '8px',
             }
           : { top }),
-      } as CSSProperties,
+      },
     });
   }, [anchor, matchWidth, estimatedHeight]);
 
@@ -564,7 +564,8 @@ export function SkTable({
 }: {
   /** CSS grid-template-columns matching the real table's proportions. */
   template: string;
-  cells: (number | string | 'thumb' | 'chip' | 'box')[];
+  /** A text width in pixels, a CSS length, or a named block: 'thumb', 'chip' or 'box'. */
+  cells: (number | string)[];
   rows?: number;
   toolbar?: boolean;
 }) {

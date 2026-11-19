@@ -277,7 +277,7 @@ function NumberRow({
         aria-label={title}
         disabled={!editable}
         value={typeof value === 'number' ? value : 0}
-        onChange={(event) => draft.set(field, Number(event.target.value) as never)}
+        onChange={(event) => draft.set(field, Number(event.target.value))}
       />
     </Row>
   );
@@ -302,7 +302,7 @@ function ToggleRow({
         checked={draft.draft[field] === true}
         disabled={!editable}
         label={title}
-        onChange={(next) => draft.set(field, next as never)}
+        onChange={(next) => draft.set(field, next)}
       />
     </Row>
   );
