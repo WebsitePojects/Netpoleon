@@ -8,7 +8,7 @@ export interface AlertRow {
   key: string;
   assetCode: string | null;
   transactionNumber: string | null;
-  at: Date;
+  at: Date | string;
   company: string | null;
   person: string | null;
   days: number | null;

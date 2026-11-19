@@ -54,10 +54,10 @@ interface TransactionRow extends Omit<
 > {
   requestId: string;
   loanId: string | null;
-  requestedAt: Date;
-  decidedAt: Date | null;
-  releasedAt: Date | null;
-  updatedAt: Date;
+  requestedAt: Date | string;
+  decidedAt: Date | string | null;
+  releasedAt: Date | string | null;
+  updatedAt: Date | string;
 }
 
 export interface TransactionRecord extends Transaction {
@@ -194,7 +194,7 @@ export class TransactionsRepository {
   }
 
   units(tx: Tx, requestId: string): Promise<TransactionUnit[]> {
-    return rows<TransactionUnit & { releasedAt: Date | null; returnedAt: Date | null }>(
+    return rows<TransactionUnit & { releasedAt: Date | string | null; returnedAt: Date | null }>(
       tx,
       sql`SELECT a.asset_code AS "assetCode", a.serial_number AS serial, a.status,
                  r.status AS "reservationStatus", li.released_at AS "releasedAt", li.returned_at AS "returnedAt",
@@ -225,7 +225,7 @@ export class TransactionsRepository {
   }
 
   extensions(tx: Tx, loanId: string): Promise<Extension[]> {
-    return rows<Extension & { at: Date }>(
+    return rows<Extension & { at: Date | string }>(
       tx,
       sql`SELECT e.requested_due_date::text AS "requestedDueDate", e.reason, e.status,
                  ${userRef('u')} AS by, e.created_at AS at

@@ -16,7 +16,7 @@ const PROFILE_COLUMNS = sql`
   u.id, u.username::text AS username, u.full_name AS name, u.email::text AS email, u.phone, u.title,
   u.role, u.last_login_at AS "lastLoginAt"`;
 
-type ProfileRow = Omit<SessionUser, 'lastLoginAt'> & { lastLoginAt: Date | null };
+type ProfileRow = Omit<SessionUser, 'lastLoginAt'> & { lastLoginAt: Date | string | null };
 
 function toProfile(row: ProfileRow): SessionUser {
   return { ...row, lastLoginAt: iso(row.lastLoginAt) };

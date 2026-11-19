@@ -9,10 +9,10 @@ interface QueueRow {
   unit: UnitRow;
   transactionNumber: string | null;
   company: string | null;
-  returnedAt: Date | null;
+  returnedAt: Date | string | null;
   missingAccessories: string[];
   note: string | null;
-  since: Date;
+  since: Date | string;
   lastShelfId: string | null;
 }
 

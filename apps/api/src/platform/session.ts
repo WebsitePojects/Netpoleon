@@ -41,8 +41,9 @@ interface SessionRow {
   role: Role;
   kind: 'staff' | 'partner';
   partner_org_id: string | null;
-  idle_expires_at: Date;
-  absolute_expires_at: Date;
+  // Drizzle's node-postgres driver hands timestamps back as strings, not Date objects.
+  idle_expires_at: string;
+  absolute_expires_at: string;
 }
 
 /**
@@ -100,8 +101,11 @@ export class SessionService {
       if (!row) {
         return null;
       }
-      const slidTo = Math.min(Date.now() + idleHours * HOUR_MS, row.absolute_expires_at.getTime());
-      if (slidTo - row.idle_expires_at.getTime() > IDLE_REFRESH_SLACK_MS) {
+      const slidTo = Math.min(
+        Date.now() + idleHours * HOUR_MS,
+        Date.parse(row.absolute_expires_at),
+      );
+      if (slidTo - Date.parse(row.idle_expires_at) > IDLE_REFRESH_SLACK_MS) {
         await tx.execute(
           sql`UPDATE sessions SET idle_expires_at = ${new Date(slidTo)} WHERE id = ${row.session_id}`,
         );

@@ -12,8 +12,8 @@ import { maybeOne, one, rowCount, rows } from '../../platform/sql.js';
 
 export interface UnitRow extends Omit<Unit, 'registeredAt' | 'updatedAt'> {
   id: string;
-  registeredAt: Date;
-  updatedAt: Date;
+  registeredAt: Date | string;
+  updatedAt: Date | string;
 }
 
 /** A unit's status and the facts a status change needs, read under a row lock. */
@@ -94,7 +94,7 @@ export function toUnit(row: UnitRow): Unit {
 }
 
 interface MovementRow extends Omit<Movement, 'at'> {
-  at: Date;
+  at: Date | string;
 }
 
 const MOVEMENT_SELECT = sql`

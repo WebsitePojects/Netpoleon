@@ -7,6 +7,18 @@
 > Format: one bold takeaway per bullet, then the mechanism/cause and the fix.
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
+## 2026-11-19
+- **Drizzle's node-postgres driver returns `timestamptz`, `timestamp` and `date` as strings, not
+  `Date`.** It installs its own type parsers, so `tx.execute(sql...)` rows carry ISO-ish strings.
+  The session lookup called `.getTime()` on one and every signed-in request 500'd. Row types in
+  repositories say `Date | string`; convert with `iso()` / `Date.parse()`, never `.getTime()`.
+- **Drizzle's `sql` tag spreads a JS array into a parameter list: `${['a','b']}` becomes `($1, $2)`.**
+  `= ANY(${array})` is therefore invalid SQL; write `col IN ${array}` (the array is never empty —
+  the schemas require at least one). For a jsonb array, pass `JSON.stringify(array)` and cast.
+- **When a test sees an opaque 500, print the app's own log line, not the response.** The problem
+  body is deliberately bare; `apps/api/test/support.ts` appends the last logged `err` to setup
+  failures so a single CI run names the real cause.
+
 ## 2026-11-15
 - **`pnpm add` wrote `^` ranges here even though `.npmrc` has `save-exact=true`.** Seven new
   dependencies landed as carets. Always pass `-E`, then check with

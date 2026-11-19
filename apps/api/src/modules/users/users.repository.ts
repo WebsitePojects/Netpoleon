@@ -17,8 +17,8 @@ const USER_SELECT = sql`
     FROM users u`;
 
 type UserRow = Omit<User, 'lastLoginAt' | 'createdAt'> & {
-  lastLoginAt: Date | null;
-  createdAt: Date;
+  lastLoginAt: Date | string | null;
+  createdAt: Date | string;
 };
 
 function toUser(row: UserRow): User {
@@ -137,7 +137,7 @@ export class UsersRepository {
         sql`(l.occurred_at, l.id) < (${filters.before[0]}::timestamptz, ${filters.before[1]}::uuid)`,
       );
     }
-    const found = await rows<Omit<AuditEntry, 'at'> & { at: Date }>(
+    const found = await rows<Omit<AuditEntry, 'at'> & { at: Date | string }>(
       tx,
       sql`SELECT l.id, l.occurred_at AS at,
                  CASE WHEN u.id IS NULL THEN NULL ELSE json_build_object('id', u.id, 'name', u.full_name,
