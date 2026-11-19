@@ -2,3 +2,10 @@ title = "Netpoleon WMS secret scanning"
 
 [extend]
 useDefault = true
+
+# Exact literals only, each one a made-up value in a test. Never widen this to a path or a
+# pattern: a real secret added to the same file must still be caught.
+[[allowlists]]
+description = "Made-up idempotency key in apps/web/test/client.test.ts"
+regexTarget = "match"
+regexes = ['''key-1234567890abcd''']
