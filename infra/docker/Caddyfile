@@ -3,5 +3,5 @@
 # X-Forwarded-For header the API's trust-proxy setting relies on.
 {$WMS_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy api:3000
+	reverse_proxy web:8080
 }

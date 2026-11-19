@@ -1,5 +1,5 @@
 import type { Action, Bootstrap, SessionUser } from '@wms/contracts';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { ApiError, apiSend, onUnauthenticated } from '../api/client.js';
 import { keys, useBootstrap } from '../api/queries.js';
@@ -24,6 +24,17 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 /**
+ * Forgets everything the previous session loaded, then records who is signed in now. The
+ * bootstrap query itself is updated in place, not removed: the provider is subscribed to it,
+ * and removing it (`client.clear()`) left that subscription on a dead query, so the console
+ * stayed blank after signing in until the page was reloaded.
+ */
+function dropSessionData(client: QueryClient, next: Bootstrap | null): void {
+  client.removeQueries({ predicate: (query) => query.queryKey[0] !== keys.bootstrap[0] });
+  client.setQueryData(keys.bootstrap, next);
+}
+
+/**
  * True between an explicit sign-out and the next sign-in. The route guard reads it so signing
  * out and in again lands on the dashboard, not on the page the previous person left.
  */
@@ -38,8 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () =>
       onUnauthenticated(() => {
         // Keep the "signed out" answer, drop everything else the previous session loaded.
-        client.clear();
-        client.setQueryData(keys.bootstrap, null);
+        dropSessionData(client, null);
       }),
     [client],
   );
@@ -56,8 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           remember,
         });
         signedOutOnPurpose = false;
-        client.clear();
-        client.setQueryData(keys.bootstrap, data);
+        dropSessionData(client, data);
         return null;
       } catch (error) {
         if (error instanceof ApiError) {
@@ -78,8 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiSend('POST', '/auth/logout', {});
     } finally {
-      client.clear();
-      client.setQueryData(keys.bootstrap, null);
+      dropSessionData(client, null);
     }
   }, [client]);
 

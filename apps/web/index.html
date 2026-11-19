@@ -6,21 +6,8 @@
     <meta name="theme-color" content="#1f1f1f" />
     <title>Netpoleon WMS</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <script>
-      // Runs before first paint so the saved theme never flashes the wrong one.
-      (function () {
-        var theme = 'system';
-        try {
-          theme = localStorage.getItem('wms-theme') || 'system';
-        } catch (error) {
-          theme = 'system';
-        }
-        var dark =
-          theme === 'dark' ||
-          (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-      })();
-    </script>
+    <!-- Blocking on purpose: it runs before first paint so the saved theme never flashes. -->
+    <script src="/theme-boot.js"></script>
     <link rel="preload" as="image" href="/img/mark.png" />
     <!--
       The preloader is styled here, not in the stylesheet: the stylesheet arrives with the

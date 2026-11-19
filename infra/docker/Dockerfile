@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 #
-# One image for every process (api now, worker later); compose chooses the command.
-# Build from the repository root:  docker build -f infra/docker/Dockerfile .
+# Two images from one build:
+#   --target runtime  the API, the worker and the CLIs (compose chooses the command)
+#   --target web      the console's static files behind an unprivileged nginx
+# Build from the repository root:  docker build -f infra/docker/Dockerfile --target runtime .
 
 FROM node:24-slim AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -16,6 +18,7 @@ COPY packages/config/package.json packages/config/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
 
 FROM manifests AS build
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
@@ -25,11 +28,16 @@ COPY packages packages
 COPY apps apps
 RUN pnpm -r build
 
-# Production dependencies are resolved separately so no compiler, test runner or linter
-# reaches the runtime image.
+# Production dependencies of the API and the packages it uses, and nothing else: no
+# compiler, test runner, linter or browser library reaches the runtime image.
 FROM manifests AS prod-deps
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod
+    pnpm install --frozen-lockfile --prod --filter "@wms/api..."
+
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
+COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+EXPOSE 8080
 
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production

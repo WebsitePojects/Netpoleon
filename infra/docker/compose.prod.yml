@@ -4,9 +4,14 @@
 #
 #   docker compose --env-file /opt/wms/wms.env -f infra/docker/compose.prod.yml up -d
 #
-# Start order: postgres healthy -> migrate (bootstrap roles, apply migrations, exit 0) -> api.
+# Start order: postgres healthy -> migrate (bootstrap roles, apply migrations, exit 0) -> api
+# and worker -> web. Only `web` publishes a port, on loopback: it serves the console and
+# forwards /api to the api service, so the browser sees one origin.
 # The proxy service is opt-in (`--profile proxy`): use it only when the server has no web
-# server of its own; otherwise the existing Nginx forwards to 127.0.0.1:${API_PORT}.
+# server of its own; otherwise the existing Nginx forwards to 127.0.0.1:${WEB_PORT}.
+#
+# First administrator (once, on a new server):
+#   docker compose ... run --rm api node apps/api/dist/cli/admin-create.js #     --username <name> --email <address> --name "<full name>"
 name: wms
 
 x-hardened: &hardened
@@ -88,13 +93,12 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-loopback,uniquelocal}
       DATABASE_URL_STAFF: postgres://wms_staff:${WMS_STAFF_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
       DATABASE_URL_PARTNER: postgres://wms_partner:${WMS_PARTNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
-    # Docker bypasses the host firewall for published ports, so this is bound to loopback.
-    ports:
-      - '127.0.0.1:${API_PORT:-3000}:3000'
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
-    # An internal network cannot publish ports, so the api also joins `edge`.
+    # No published port: the web container is the only way in. `edge` reaches web.
     networks: [backend, edge]
     mem_limit: 512m
     cpus: 1.0
@@ -108,6 +112,50 @@ services:
       timeout: 5s
       retries: 4
       start_period: 15s
+
+  # Same image as the api, different command: the outbox and the scheduled jobs.
+  worker:
+    <<: *hardened
+    image: ${WMS_IMAGE:?}
+    command: ['node', 'apps/api/dist/worker/main.js']
+    environment:
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN:?}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_NAME: worker-1
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      DATABASE_URL_STAFF: postgres://wms_staff:${WMS_STAFF_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+      DATABASE_URL_PARTNER: postgres://wms_partner:${WMS_PARTNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-wms}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [backend]
+    mem_limit: 256m
+    cpus: 0.5
+    stop_grace_period: 30s
+
+  web:
+    <<: *hardened
+    image: ${WMS_WEB_IMAGE:?WMS_WEB_IMAGE is required (pin an image digest)}
+    # nginx writes its cache and pid under these; the rest of the filesystem stays read-only.
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    # Docker bypasses the host firewall for published ports, so this is bound to loopback.
+    ports:
+      - '127.0.0.1:${WEB_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   proxy:
     <<: *hardened
@@ -126,7 +174,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      api:
+      web:
         condition: service_healthy
     networks: [edge]
     mem_limit: 128m

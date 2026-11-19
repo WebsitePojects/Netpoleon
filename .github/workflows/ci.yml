@@ -63,12 +63,15 @@ jobs:
         run: pnpm audit --prod
 
       # Build only; nothing is pushed from CI at this stage.
-      - name: Build image
-        run: docker build -f infra/docker/Dockerfile -t wms-ci:${{ github.sha }} .
+      - name: Build images
+        run: |
+          docker build -f infra/docker/Dockerfile --target runtime -t wms-ci:${{ github.sha }} .
+          docker build -f infra/docker/Dockerfile --target web -t wms-web-ci:${{ github.sha }} .
 
       # The compose hardening assumes a non-root process; prove the image delivers it.
       - name: Image runs as non-root
         run: |
           uid="$(docker run --rm wms-ci:${{ github.sha }} id -u)"
-          echo "image uid: ${uid}"
-          test "${uid}" != "0"
+          web_uid="$(docker run --rm --entrypoint id wms-web-ci:${{ github.sha }} -u)"
+          echo "image uid: ${uid}, web image uid: ${web_uid}"
+          test "${uid}" != "0" && test "${web_uid}" != "0"

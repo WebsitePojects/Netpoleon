@@ -7,6 +7,20 @@
 > Format: one bold takeaway per bullet, then the mechanism/cause and the fix.
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
+## 2026-11-20
+- **Never `queryClient.clear()` while a component is subscribed to a query you then re-seed.**
+  Sign-in cleared the whole TanStack cache and then set the bootstrap query; the AuthProvider's
+  observer stayed on the removed query, so the console was blank after signing in until a
+  reload. Every earlier browser test reloaded after sign-in and hid it. `dropSessionData()` in
+  `apps/web/src/auth/auth.tsx` removes every query except the session's and updates that one in
+  place. Browser tests must cover the in-place sign-in and an account switch without reload.
+- **Drive the workflows through the screens, not just the pages.** Loading every page passed;
+  clicking through the lifecycle found two real problems: a just-returned unit was unreachable
+  past page one of the inspection queue (fixed with a scan box), and the blank-after-sign-in bug.
+- **The hardened Postgres container works.** `read_only` + `cap_drop` + the five `cap_add`s in
+  `compose.prod.yml` ran the full stack locally (migrate, seed, lifecycle over HTTPS via Caddy).
+  The 2026-11-13 hang was the full `C:` disk, not the hardening.
+
 ## 2026-11-19
 - **Drizzle's node-postgres driver returns `timestamptz`, `timestamp` and `date` as strings, not
   `Date`.** It installs its own type parsers, so `tx.execute(sql...)` rows carry ISO-ish strings.

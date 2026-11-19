@@ -11,3 +11,4 @@ docs
 **/*.tsbuildinfo
 **/.env*
 infra
+!infra/docker/nginx.conf
