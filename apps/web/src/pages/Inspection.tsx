@@ -5,11 +5,11 @@ import type {
   InspectionQueueItem,
   Unit,
 } from '@wms/contracts';
-import { ClipboardCheck, PackageCheck, SearchCheck, Wrench } from 'lucide-react';
+import { ClipboardCheck, PackageCheck, ScanLine, SearchCheck, Wrench } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiSend, newIntentKey } from '../api/client.js';
-import { useInspectionQueue, useInvalidate } from '../api/queries.js';
+import { useDebounced, useInspectionQueue, useInvalidate } from '../api/queries.js';
 import { useAuth } from '../auth/auth.js';
 import { Select, SkTable } from '../components/controls.js';
 import { ActionDialog, ReasonDialog, ShelfSelect } from '../components/dialogs.js';
@@ -70,7 +70,14 @@ export function Inspection() {
   const tabParam = params.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'awaiting';
   const page = Math.max(1, Number(params.get('page')) || 1);
-  const queue = useInspectionQueue({ status: TAB_STATUS[tab], page, pageSize: PAGE_SIZE });
+  const [search, setSearch] = useState('');
+  const q = useDebounced(search.trim());
+  const queue = useInspectionQueue({
+    status: TAB_STATUS[tab],
+    page,
+    pageSize: PAGE_SIZE,
+    q: q || undefined,
+  });
   const mayInspect = can('inspection.perform');
   const counts = queue.data?.counts;
 
@@ -106,6 +113,21 @@ export function Inspection() {
           onChange={(next) => setParams({ tab: next }, { replace: true })}
           label="Inspection queues"
         />
+
+        <label className="input-wrap" style={{ maxWidth: 420 }}>
+          <span className="sr-only">Scan or search a unit in this queue</span>
+          <ScanLine aria-hidden="true" />
+          <input
+            className="input mono"
+            type="search"
+            placeholder="Scan or type an asset code or serial…"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              if (page !== 1) setParams({ tab }, { replace: true });
+            }}
+          />
+        </label>
 
         <div className="card table-card">
           {queue.isPending ? (

@@ -262,7 +262,9 @@ export function UnitDetail() {
                       <td data-label="Movement">
                         <span className="cell-main">{MOVEMENT_LABELS[movement.type]}</span>
                         {movement.toLocation && movement.toLocation !== movement.fromLocation && (
-                          <span className="cell-sub">to {movement.toLocation}</span>
+                          <span className="cell-sub" style={{ display: 'block' }}>
+                            to {movement.toLocation}
+                          </span>
                         )}
                       </td>
                       <td data-label="Status after">

@@ -39,8 +39,8 @@ createRoot(root).render(
   </StrictMode>,
 );
 
-// Let the preloader play at least one beat, then fade it out and drop it from the tree.
-const BOOT_MIN_MS = 900;
+// Fade the boot screen out as soon as the app has rendered: no artificial wait on any load.
+const BOOT_MIN_MS = 0;
 const BOOT_FADE_MS = 560;
 const boot = document.getElementById('boot');
 if (boot) {
