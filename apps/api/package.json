@@ -9,7 +9,9 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "seed:dev": "tsx src/cli/seed/main.ts"
+    "seed:dev": "tsx src/cli/seed/main.ts",
+    "worker": "tsx --conditions=wms-source src/worker/main.ts",
+    "admin:create": "tsx --conditions=wms-source src/cli/admin-create.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
