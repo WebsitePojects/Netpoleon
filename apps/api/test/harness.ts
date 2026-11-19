@@ -29,7 +29,8 @@ export interface TestApp {
 export function configFor(urls: DatabaseUrls, nodeEnv: 'test' | 'production' = 'test'): AppConfig {
   return loadConfig({
     NODE_ENV: nodeEnv,
-    APP_ORIGIN: 'http://localhost:5173',
+    // Production refuses a plain-http origin (the session cookie would travel in clear text).
+    APP_ORIGIN: nodeEnv === 'production' ? 'https://wms.example.test' : 'http://localhost:5173',
     DATABASE_URL_STAFF: urls.staffUrl,
     DATABASE_URL_PARTNER: urls.partnerUrl,
     LOG_LEVEL: 'debug',

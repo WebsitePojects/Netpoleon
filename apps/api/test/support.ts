@@ -121,7 +121,7 @@ export interface World {
 export async function buildWorld(): Promise<World> {
   const apps = new TestApps();
   const { staffUrl, partnerUrl } = getTestDb();
-  const { app } = await apps.create({ urls: { staffUrl, partnerUrl } });
+  const { app, logLines } = await apps.create({ urls: { staffUrl, partnerUrl } });
   const [a, m, w, au] = await Promise.all([
     seedStaff('admin'),
     seedStaff('manager'),
@@ -134,8 +134,12 @@ export async function buildWorld(): Promise<World> {
   const auditor = await Browser.signIn(app, au.username);
 
   const id = (response: LightMyRequestResponse): string => {
-    if (response.statusCode !== 201)
-      throw new Error(`setup failed: ${response.statusCode} ${response.body}`);
+    if (response.statusCode !== 201) {
+      // The 500 body is opaque by design; the cause is in the app's own log.
+      const cause = logLines.filter((line) => line.includes('"err"')).slice(-1)[0] ?? '';
+      throw new Error(`setup failed: ${response.statusCode} ${response.body}
+${cause.slice(0, 2000)}`);
+    }
     return response.json<{ id: string }>().id;
   };
   const tag = unique('L').toUpperCase().slice(0, 12);
