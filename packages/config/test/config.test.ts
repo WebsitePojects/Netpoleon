@@ -112,7 +112,11 @@ describe('loadConfig', () => {
   });
 
   describe('in production', () => {
-    const production = { ...validEnv, NODE_ENV: 'production', APP_ORIGIN: 'https://wms.example.com' };
+    const production = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      APP_ORIGIN: 'https://wms.example.com',
+    };
 
     it('refuses API_HOST 0.0.0.0', () => {
       expect(failure({ ...production, API_HOST: '0.0.0.0' }).invalidKeys).toContain('API_HOST');

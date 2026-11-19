@@ -14,7 +14,8 @@ const httpOrigin = z.url({ protocol: /^https?$/ }).transform((value) => new URL(
 
 // `addr@host.tld` or `Display Name <addr@host.tld>`. A line break would let the value inject
 // extra mail headers, so the pattern admits none.
-const MAIL_FROM_PATTERN = /^(?:[^\r\n<>]{1,100} <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/;
+const MAIL_FROM_PATTERN =
+  /^(?:[^\r\n<>]{1,100} <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/;
 
 /**
  * One flat object keyed by the real variable names, so a validation issue's path is the
