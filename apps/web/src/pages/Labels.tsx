@@ -1,12 +1,13 @@
 import { ASSET_CODE_PATTERN, LABEL_SIZES, MAX_LABEL_CODES, type Settings } from '@wms/contracts';
-import { Plus, Printer, Tags, X } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { Printer, Search, Tags, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useDebounced, useUnits } from '../api/queries.js';
+import { useUnits } from '../api/queries.js';
 import { useReference } from '../auth/auth.js';
 import { AssetLabel } from '../components/AssetLabel.js';
-import { Select, SuggestInput } from '../components/controls.js';
-import { Button, Empty, Field, PageHead, useToast } from '../components/ui.js';
+import { Select } from '../components/controls.js';
+import { Button, Empty, Field, PageHead } from '../components/ui.js';
+import { UnitPickerDialog } from '../components/UnitPicker.js';
 
 const SIZE_LABELS: Record<Settings['labelSize'], string> = {
   '50x25': '50 × 25 mm',
@@ -14,7 +15,6 @@ const SIZE_LABELS: Record<Settings['labelSize'], string> = {
   '100x50': '100 × 50 mm',
 };
 const MAX_COPIES = 3;
-const SUGGESTIONS = 7;
 
 /**
  * The label sheet. Units arrive in `?codes=` (the Units list sends its selection here) and can
@@ -22,9 +22,8 @@ const SUGGESTIONS = 7;
  */
 export function Labels() {
   const { settings } = useReference();
-  const toast = useToast();
   const [params, setParams] = useSearchParams();
-  const [entry, setEntry] = useState('');
+  const [picking, setPicking] = useState(false);
   const [size, setSize] = useState<Settings['labelSize']>(settings.labelSize);
   const [copies, setCopies] = useState('1');
   const [showSerial, setShowSerial] = useState(settings.labelShowsSerial);
@@ -48,34 +47,11 @@ export function Labels() {
   const codes = asked.filter((code) => byCode.has(code));
   const missing = units.data ? asked.filter((code) => !byCode.has(code)) : [];
 
-  // Suggestions come from a server search, so a warehouse of any size offers the right few.
-  const term = useDebounced(entry.trim());
-  const found = useUnits({ q: term, page: 1, pageSize: SUGGESTIONS }, term.length >= 2);
-  const suggestions = (found.data?.items ?? [])
-    .map((unit) => unit.code)
-    .filter((code) => !asked.includes(code));
-
   const setCodes = (next: string[]) => {
     const updated = new URLSearchParams(params);
     if (next.length) updated.set('codes', next.join(','));
     else updated.delete('codes');
     setParams(updated, { replace: true });
-  };
-
-  const add = (event?: FormEvent) => {
-    event?.preventDefault();
-    const code = entry.trim().toUpperCase();
-    if (!code) return;
-    if (!ASSET_CODE_PATTERN.test(code)) {
-      toast(`${code} is not an asset code, such as NTP-FW-00001`, 'error');
-      return;
-    }
-    if (asked.length >= MAX_LABEL_CODES) {
-      toast(`One sheet holds at most ${MAX_LABEL_CODES} units`, 'error');
-      return;
-    }
-    if (!asked.includes(code)) setCodes([...asked, code]);
-    setEntry('');
   };
 
   const sheet = codes.flatMap((code) =>
@@ -103,20 +79,16 @@ export function Labels() {
       />
       <div className="labels-layout">
         <section className="card card-pad stack" style={{ gap: 14 }} aria-label="Label options">
-          <form className="row" style={{ gap: 8, flexWrap: 'nowrap' }} onSubmit={add}>
-            <div style={{ flex: 1 }}>
-              <SuggestInput
-                value={entry}
-                onChange={setEntry}
-                suggestions={suggestions}
-                placeholder="Add by asset code, e.g. NTP-FW-00001"
-                className="input mono"
-              />
-            </div>
-            <Button type="submit" icon={Plus} aria-label="Add unit">
-              Add
-            </Button>
-          </form>
+          <button
+            type="button"
+            className="picker-trigger"
+            onClick={() => setPicking(true)}
+            disabled={asked.length >= MAX_LABEL_CODES}
+          >
+            <Search aria-hidden="true" />
+            <span>Search and choose units…</span>
+            <span className="picker-hint">by code, serial or model</span>
+          </button>
           <div className="form-grid cols-2">
             <Field label="Label size">
               <Select
@@ -186,7 +158,7 @@ export function Labels() {
         <section className="card label-preview" aria-label="Label sheet">
           {sheet.length === 0 ? (
             <Empty title="No labels yet" icon={Tags}>
-              Add asset codes on the left, or select units on the{' '}
+              Press <b>Search and choose units</b> on the left, or tick units on the{' '}
               <Link to="/units">Demo Units</Link> list and choose Print labels.
             </Empty>
           ) : (
@@ -201,6 +173,15 @@ export function Labels() {
           )}
         </section>
       </div>
+      {picking && (
+        <UnitPickerDialog
+          title="Choose units to label"
+          already={asked}
+          limit={MAX_LABEL_CODES - asked.length}
+          onAdd={(chosen) => setCodes([...asked, ...chosen])}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
   );
 }

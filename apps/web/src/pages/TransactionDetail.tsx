@@ -9,6 +9,7 @@ import {
   FileText,
   Info,
   PackageCheck,
+  Printer,
   Send,
   Undo2,
   User,
@@ -134,6 +135,16 @@ export function TransactionDetail() {
         actions={
           loan && (
             <>
+              <a
+                className="btn"
+                href={`/print/transactions/${loan.number}`}
+                target="_blank"
+                rel="noopener"
+                title="Open the branded borrowing slip to print or save as PDF"
+              >
+                <Printer aria-hidden="true" />
+                Print slip
+              </a>
               {loan.stage === 'pending' && can('loan.decide') && (
                 <>
                   <Button

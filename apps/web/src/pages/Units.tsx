@@ -161,16 +161,22 @@ export function Units() {
         title="Demo Units"
         lead="Complete list of demo assets with real-time status"
         actions={
-          can('unit.register') && (
-            <>
-              <Button icon={FileUp} onClick={() => setImporting(true)}>
-                Import
-              </Button>
-              <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
-                Add Asset
-              </Button>
-            </>
-          )
+          <>
+            <Link className="btn" to="/units/labels">
+              <Tags aria-hidden="true" />
+              Print labels
+            </Link>
+            {can('unit.register') && (
+              <>
+                <Button icon={FileUp} onClick={() => setImporting(true)}>
+                  Import
+                </Button>
+                <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+                  Add Asset
+                </Button>
+              </>
+            )}
+          </>
         }
       />
 

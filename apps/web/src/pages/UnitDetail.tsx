@@ -1,6 +1,6 @@
 import type { ConditionGrade, Movement, Unit, UnitDetail as UnitDetailData } from '@wms/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { Archive, MapPin, Pencil, Printer, Wrench } from 'lucide-react';
+import { Archive, MapPin, Pencil, Printer, Tags, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, apiGet, apiSend } from '../api/client.js';
@@ -309,9 +309,22 @@ export function UnitDetail() {
                 <h2 id="label-title" className="section-title">
                   Asset label
                 </h2>
-                <Button size="sm" icon={Printer} onClick={() => window.print()}>
-                  Print
-                </Button>
+                <span className="row" style={{ gap: 6 }}>
+                  <Link className="btn btn-sm" to={`/units/labels?codes=${unit.code}`}>
+                    <Tags aria-hidden="true" />
+                    Print label
+                  </Link>
+                  <a
+                    className="btn btn-sm"
+                    href={`/print/units/${unit.code}`}
+                    target="_blank"
+                    rel="noopener"
+                    title="Open the branded unit record to print or save as PDF"
+                  >
+                    <Printer aria-hidden="true" />
+                    Print record
+                  </a>
+                </span>
               </div>
               <div className="label-card">
                 <QrCode value={unit.code} />

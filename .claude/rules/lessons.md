@@ -8,6 +8,17 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-20
+- **Printing a screen is not a document.** "Print" on the unit page called `window.print()` and
+  printed the whole app. Printouts now open a dedicated route (`/print/units/:code`,
+  `/print/transactions/:number`) rendered with `components/PrintDocument.tsx`: the company's
+  letterhead from Settings, document number, footer with who printed it, a named A4 `@page`
+  (so label printing keeps its own paper size), fixed light colours whatever the theme.
+- **Repeat a letterhead with a table, and decode its logo synchronously.** Chrome repeats a
+  table's `thead`/`tfoot` on every printed page, but left the logo blank on page 2+ until the
+  `<img>` had `decoding="sync"`. And `break-inside: avoid-page` on whole sections pushed a long
+  history table to page 2, leaving page 1 half empty: keep only headings with their content
+  (`break-after: avoid`) and let tables run over pages. Proved by padding a record to 120 rows
+  and checking every PDF page for the letterhead and the table header.
 - **Fetch and compare `origin/main` before merging a long-lived branch.** A teammate had built a
   second, parallel backend on `main` (slices 2a-2d) while this branch built the full lifecycle;
   the fast-forward push was rejected and a trial merge showed 58 conflicting files and two

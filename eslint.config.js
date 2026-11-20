@@ -10,6 +10,7 @@ export default defineConfig(
     '**/dist/**',
     '**/node_modules/**',
     '**/coverage/**',
+    '**/build/**',
     '.claude/**',
     '.impeccable/**',
   ]),

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { leftOnPurpose, useAuth } from './auth/auth.js';
 import { Shell } from './components/Shell.js';
 import { Alerts } from './pages/Alerts.js';
@@ -9,6 +9,7 @@ import { ForgotPassword, Login, SetPassword } from './pages/Login.js';
 import { Help } from './pages/Help.js';
 import { Labels } from './pages/Labels.js';
 import { NotFound } from './pages/NotFound.js';
+import { BorrowingSlipPrint, UnitRecordPrint } from './pages/PrintDocs.js';
 import { PartnerDetail } from './pages/PartnerDetail.js';
 import { Partners } from './pages/Partners.js';
 import { Profile } from './pages/Profile.js';
@@ -32,6 +33,16 @@ function Protected() {
   return <Shell />;
 }
 
+/** Printable documents: signed-in only, but without the app frame around them. */
+function PrintFrame() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return null;
+  if (!user)
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  return <Outlet />;
+}
+
 export function App() {
   return (
     <Routes>
@@ -39,6 +50,10 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<SetPassword purpose="reset" />} />
       <Route path="/accept-invite/:token" element={<SetPassword purpose="invite" />} />
+      <Route element={<PrintFrame />}>
+        <Route path="print/units/:code" element={<UnitRecordPrint />} />
+        <Route path="print/transactions/:number" element={<BorrowingSlipPrint />} />
+      </Route>
       <Route element={<Protected />}>
         <Route index element={<Dashboard />} />
         <Route path="units" element={<Units />} />
