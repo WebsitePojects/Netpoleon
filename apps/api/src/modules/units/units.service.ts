@@ -1,22 +1,26 @@
-import type {
-  BulkRelocateBody,
-  BulkResult,
-  CompleteRepairBody,
-  ExportUnitsQuery,
-  ListUnitsQuery,
-  Movement,
-  ReasonBody,
-  RegisterUnitBody,
-  RelocateUnitBody,
-  Unit,
-  UnitDetail,
-  UpdateUnitBody,
+import {
+  serialSchema,
+  type BulkRelocateBody,
+  type BulkResult,
+  type CompleteRepairBody,
+  type ExportUnitsQuery,
+  type ImportUnitsBody,
+  type ImportUnitsResponse,
+  type ListUnitsQuery,
+  type Movement,
+  type ReasonBody,
+  type RegisterUnitBody,
+  type RelocateUnitBody,
+  type Unit,
+  type UnitDetail,
+  type UpdateUnitBody,
 } from '@wms/contracts';
 import type { Database, Tx } from '@wms/db';
 import { AppError } from '../../errors.js';
 import type { AuditWriter } from '../../platform/audit.js';
 import type { RequestContext } from '../../platform/context.js';
 import { manilaToday } from '../../platform/dates.js';
+import { checkImportRows } from './units.import.js';
 import { CSV_ROW_LIMIT, offsetOf } from '../../platform/http.js';
 import { idempotent, type Outcome } from '../../platform/idempotency.js';
 import type { SettingsService } from '../../platform/settings.js';
@@ -59,11 +63,10 @@ export class UnitsService {
     return this.db.transaction(ctx.scope, async (tx) => {
       const unit = await this.repo.byCode(tx, code);
       if (!unit) throw notFound();
-      const [own, reservations, movements] = await Promise.all([
-        this.repo.ownership(tx, unit.id),
-        this.repo.reservations(tx, unit.id, turnaroundBufferDays),
-        this.repo.movements(tx, unit.id, DETAIL_MOVEMENTS + 1, undefined),
-      ]);
+      // One connection runs one query at a time; pg 9 rejects overlapping queries on a client.
+      const own = await this.repo.ownership(tx, unit.id);
+      const reservations = await this.repo.reservations(tx, unit.id, turnaroundBufferDays);
+      const movements = await this.repo.movements(tx, unit.id, DETAIL_MOVEMENTS + 1, undefined);
       const page = (movements ?? []).slice(0, DETAIL_MOVEMENTS);
       const { id: _id, ...shown } = unit;
       return {
@@ -127,6 +130,74 @@ export class UnitsService {
           fields: { assetCode: created.code, serial: body.serial, condition: body.condition },
         });
         return { status: 201, body: await this.reload(tx, created.code) };
+      }),
+    );
+  }
+
+  /**
+   * Registers a whole file of existing stock (go-live). A dry run reports every problem and
+   * writes nothing. The real run writes every unit or none: one bad row rolls the file back.
+   * Each unit gets the same two movements as a single registration.
+   */
+  async importUnits(
+    ctx: RequestContext,
+    body: ImportUnitsBody,
+  ): Promise<Outcome<ImportUnitsResponse>> {
+    const serials = [
+      ...new Set(
+        body.rows.flatMap((row) => {
+          const parsed = serialSchema.safeParse(row.serial);
+          return parsed.success ? [parsed.data] : [];
+        }),
+      ),
+    ];
+    const check = async (tx: Tx) =>
+      checkImportRows(body.rows, await this.repo.importLookup(tx, serials));
+
+    if (body.dryRun) {
+      const { errors } = await this.db.transaction(ctx.scope, check);
+      return {
+        status: 200,
+        replayed: false,
+        body: { valid: errors.length === 0, errors, created: [] },
+      };
+    }
+    return this.db.transaction(ctx.scope, (tx) =>
+      idempotent(tx, ctx, body, async () => {
+        const { errors, plans } = await check(tx);
+        if (errors.length > 0) {
+          throw new AppError(
+            422,
+            'import_invalid',
+            `${new Set(errors.map((error) => error.row)).size} row(s) have problems; nothing was imported`,
+          );
+        }
+        const created: ImportUnitsResponse['created'] = [];
+        for (const plan of plans) {
+          const unit = await this.repo.insert(tx, plan);
+          const base = { assetId: unit.id, actorUserId: ctx.actor.userId };
+          await this.repo.move(tx, {
+            ...base,
+            type: 'registered',
+            from: 'registered',
+            to: 'registered',
+          });
+          await this.repo.move(tx, {
+            ...base,
+            type: 'stocked',
+            from: 'registered',
+            to: 'in_stock',
+            toLocationId: plan.locationId,
+          });
+          created.push({ row: plan.row, code: unit.code });
+        }
+        await this.audit.record(tx, ctx, {
+          action: 'unit.import',
+          targetType: 'asset',
+          targetId: null,
+          fields: { quantity: created.length, assetCodes: created.map((item) => item.code) },
+        });
+        return { status: 201, body: { valid: true, errors: [], created } };
       }),
     );
   }

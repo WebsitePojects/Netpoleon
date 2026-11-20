@@ -4,6 +4,7 @@ import {
   bulkResultSchema,
   candidatesResponse,
   createTransactionBody,
+  recordExistingLoanBody,
   exportTransactionsQuery,
   extendTransactionBody,
   listTransactionsQuery,
@@ -86,6 +87,15 @@ export function transactionsRoutes(
         sendOutcome(
           reply,
           await service.create(guard.require(request, 'loan.request'), request.body),
+        ),
+    );
+    app.post(
+      '/transactions/existing',
+      { schema: { body: recordExistingLoanBody, response: { 201: transactionDetailSchema } } },
+      async (request, reply) =>
+        sendOutcome(
+          reply,
+          await service.recordExisting(guard.require(request, 'loan.backdate'), request.body),
         ),
     );
 

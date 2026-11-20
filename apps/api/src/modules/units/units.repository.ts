@@ -9,6 +9,7 @@ import type { Tx } from '@wms/db';
 import { sql, type SQL } from 'drizzle-orm';
 import { iso } from '../../platform/dates.js';
 import { maybeOne, one, rowCount, rows } from '../../platform/sql.js';
+import { modelKey, shelfKey, type ImportLookup } from './units.import.js';
 
 export interface UnitRow extends Omit<Unit, 'registeredAt' | 'updatedAt'> {
   id: string;
@@ -238,6 +239,37 @@ export class UnitsRepository {
            LIMIT ${limit}`,
     );
     return found.map(toMovement);
+  }
+
+  /**
+   * Everything an import file is matched against, in three queries whatever its length: every
+   * model and shelf (dozens of rows each), and the units already holding one of its serials.
+   */
+  async importLookup(tx: Tx, serials: readonly string[]): Promise<ImportLookup> {
+    const models = await rows<{ id: string; label: string; categoryCode: string }>(
+      tx,
+      sql`SELECT m.id, m.brand || ' ' || m.model_name AS label, c.code AS "categoryCode"
+            FROM product_models m JOIN categories c ON c.id = m.category_id`,
+    );
+    const shelves = await rows<{ id: string; code: string }>(
+      tx,
+      sql`SELECT id, code FROM locations WHERE kind = 'shelf'`,
+    );
+    const taken =
+      serials.length === 0
+        ? []
+        : await rows<{ modelId: string; serial: string }>(
+            tx,
+            sql`SELECT product_model_id AS "modelId", serial_number AS serial
+                  FROM assets WHERE serial_number IN ${[...serials]}`,
+          );
+    return {
+      models: new Map(
+        models.map((m) => [modelKey(m.label), { id: m.id, categoryCode: m.categoryCode }]),
+      ),
+      shelves: new Map(shelves.map((s) => [shelfKey(s.code), s.id])),
+      taken: new Set(taken.map((t) => `${t.modelId}|${t.serial}`)),
+    };
   }
 
   modelCategory(tx: Tx, modelId: string): Promise<{ code: string } | null> {

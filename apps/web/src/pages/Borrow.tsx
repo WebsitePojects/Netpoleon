@@ -5,7 +5,7 @@ import type {
   TransactionDetail,
   TransactionStage,
 } from '@wms/contracts';
-import { Ban, Plus } from 'lucide-react';
+import { Ban, History, Plus } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiSend, exportUrl } from '../api/client.js';
@@ -37,6 +37,7 @@ import {
   type TabItem,
 } from '../components/ui.js';
 import { addDays, daysBetween, formatDate } from '../lib/dates.js';
+import { RecordExistingLoanDialog } from './RecordExistingLoan.js';
 import { ORG_TYPE_OPTIONS, STAGE_LABELS } from '../lib/labels.js';
 
 type TabId = 'requests' | 'on_demo' | 'returned' | 'all';
@@ -61,6 +62,7 @@ export function Borrow() {
   const navigate = useNavigate();
   const invalidate = useInvalidate();
   const [params, setParams] = useSearchParams();
+  const [recording, setRecording] = useState(false);
   const [rejecting, setRejecting] = useState<{ loans: Transaction[]; clear: () => void } | null>(
     null,
   );
@@ -217,11 +219,18 @@ export function Borrow() {
         title="Borrow / Return"
         lead="Requests, approvals, releases and returns of demo units"
         actions={
-          can('loan.request') && (
-            <Button variant="primary" icon={Plus} onClick={() => update({ new: '1' })}>
-              New request
-            </Button>
-          )
+          <>
+            {can('loan.backdate') && (
+              <Button icon={History} onClick={() => setRecording(true)}>
+                Record existing loan
+              </Button>
+            )}
+            {can('loan.request') && (
+              <Button variant="primary" icon={Plus} onClick={() => update({ new: '1' })}>
+                New request
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -298,6 +307,7 @@ export function Borrow() {
       </div>
 
       {creating && <RequestDialog onClose={() => update({ new: '' })} />}
+      {recording && <RecordExistingLoanDialog onClose={() => setRecording(false)} />}
       {rejecting && (
         <ReasonDialog
           title={`Reject ${rejecting.loans.length} request${rejecting.loans.length === 1 ? '' : 's'}`}
@@ -331,7 +341,7 @@ export function Borrow() {
   );
 }
 
-const PURPOSES = [
+export const PURPOSES = [
   'Customer proof of concept',
   'Product demo',
   'Partner training',

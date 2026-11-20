@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { MigrationChecksumError, MigrationRunner } from '../src/migrate/runner.js';
+import { EXPECTED_MIGRATION_COUNT } from '../src/client.js';
 import { createScratchDatabase, withClient } from './helpers.js';
 
 const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations', import.meta.url));
@@ -33,7 +34,7 @@ describe('migration runner', () => {
     const first = await runner.run();
     const second = await runner.run();
 
-    expect(expected).toHaveLength(11);
+    expect(expected).toHaveLength(EXPECTED_MIGRATION_COUNT);
     expect(first).toEqual({ applied: expected, skipped: [] });
     expect(second.applied).toHaveLength(0);
     expect(second.skipped).toEqual(expected);

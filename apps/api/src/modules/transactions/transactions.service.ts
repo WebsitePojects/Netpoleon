@@ -3,10 +3,12 @@ import type {
   BulkRejectBody,
   BulkResult,
   Candidates,
+  CompanyChoice,
   CreateTransactionBody,
   ExportTransactionsQuery,
   ExtendTransactionBody,
   ListTransactionsQuery,
+  RecordExistingLoanBody,
   ReleaseTransactionBody,
   ReturnTransactionBody,
   StageCounts,
@@ -114,19 +116,7 @@ export class TransactionsService {
         if (!model) throw new AppError(422, 'model_not_found', 'That product model does not exist');
         if (!model.bookable)
           throw new AppError(422, 'not_bookable', 'That model is not available to book');
-        // Share-locked either way, so an archive of this company waits for the request.
-        const company =
-          'id' in body.company
-            ? await this.partners.share(tx, body.company.id)
-            : await this.partners.findOrCreate(tx, body.company.name, body.company.type);
-        if (!company) throw new AppError(422, 'company_not_found', 'That company does not exist');
-        if (company.status === 'archived') {
-          throw new AppError(
-            422,
-            'company_archived',
-            `${company.name} is archived; restore it in Partners before filing for it`,
-          );
-        }
+        const company = await this.companyFor(tx, body.company);
         const created = await this.repo.createRequest(tx, {
           year: today.slice(0, 4),
           partnerOrgId: company.id,
@@ -288,6 +278,143 @@ export class TransactionsService {
    * Scans units out. The request row is locked first (plan R8), so two clerks releasing the same
    * request cannot both create its loan; the open-loan unique index stops a unit going out twice.
    */
+  /**
+   * A loan that was already out when the system went live (admin only): filed, reserved and
+   * released in one transaction, back-dated to `releasedOn` and marked `is_backdated`. Nobody
+   * is recorded as approver, because nobody approved it in this system. The loan rules for new
+   * requests (start not in the past, longest loan) do not apply to what already happened; the
+   * exclusion constraint still refuses a unit already promised to someone else.
+   */
+  async recordExisting(
+    ctx: RequestContext,
+    body: RecordExistingLoanBody,
+  ): Promise<Outcome<TransactionDetail>> {
+    const today = manilaToday();
+    if (body.releasedOn > today) {
+      throw new AppError(
+        422,
+        'release_in_future',
+        'An existing loan was released today or earlier',
+      );
+    }
+    const { turnaroundBufferDays } = await this.settings.get();
+    return this.db.transaction(ctx.scope, (tx) =>
+      idempotent(tx, ctx, body, async () => {
+        const assets = [];
+        // Locked in code order, so two records naming the same units cannot deadlock.
+        const items = [...body.items].sort((a, b) => a.scannedCode.localeCompare(b.scannedCode));
+        for (const item of items) {
+          const asset = await this.repo.lockAsset(tx, item.scannedCode);
+          if (!asset) {
+            throw new AppError(422, 'unit_not_found', `No unit has the code ${item.scannedCode}`);
+          }
+          if (asset.status !== 'in_stock') {
+            throw new AppError(
+              409,
+              'unit_not_ready',
+              `${item.scannedCode} is not on the shelf in the system; register or restock it first`,
+            );
+          }
+          assets.push({ ...asset, item });
+        }
+        const modelId = assets[0]?.modelId as string;
+        if (assets.some((asset) => asset.modelId !== modelId)) {
+          throw new AppError(
+            422,
+            'mixed_models',
+            'Record one model per loan; file the others separately',
+          );
+        }
+        const allowed = new Set(await this.repo.accessoriesOf(tx, modelId));
+        for (const { item } of assets) {
+          const unknown = item.accessoriesOut.filter((name) => !allowed.has(name));
+          if (unknown.length > 0) {
+            throw new AppError(
+              422,
+              'unknown_accessory',
+              `Not an accessory of this model: ${unknown.join(', ')}`,
+            );
+          }
+        }
+
+        const company = await this.companyFor(tx, body.company);
+        const created = await this.repo.createRequest(tx, {
+          year: today.slice(0, 4),
+          partnerOrgId: company.id,
+          filedBy: ctx.actor.userId,
+          contact: body.contact,
+          neededFrom: body.releasedOn,
+          neededUntil: body.dueDate,
+          purpose: body.purpose,
+          endCustomer: body.endCustomer,
+        });
+        await this.repo.addItem(tx, created.id, company.id, modelId, assets.length);
+        await this.partners.rememberContact(tx, company.id, body.contact);
+        const request = await this.repo.lockRequest(tx, created.number);
+        if (!request) throw notFound();
+
+        for (const asset of assets) {
+          await this.repo.reserve(
+            tx,
+            asset.id,
+            request.itemId,
+            body.releasedOn,
+            body.dueDate,
+            turnaroundBufferDays,
+          );
+        }
+        await this.repo.setAssigned(tx, request.itemId, assets.length);
+        await this.repo.decide(
+          tx,
+          request.id,
+          ['submitted'],
+          'fulfilled',
+          null,
+          'Recorded at go-live: already out before the system started',
+        );
+        const loan = await this.repo.createLoan(tx, request, ctx.actor.userId, body.releasedOn);
+        for (const { item } of assets) {
+          const reservation = await this.repo.reservationFor(tx, request.id, item.scannedCode);
+          if (!reservation) throw new Error(`reservation for ${item.scannedCode} vanished`);
+          const loanItem = await this.repo.addLoanItem(tx, {
+            loanId: loan.id,
+            partnerOrgId: company.id,
+            assetId: reservation.assetId,
+            reservationId: reservation.id,
+            accessoriesOut: item.accessoriesOut,
+            releasedOn: body.releasedOn,
+          });
+          await this.repo.setReservationStatus(tx, reservation.id, 'released');
+          await this.units.move(tx, {
+            assetId: reservation.assetId,
+            type: 'released',
+            from: 'in_stock',
+            to: 'on_demo',
+            actorUserId: ctx.actor.userId,
+            loanItemId: loanItem.id,
+            note: `Recorded at go-live; out since ${body.releasedOn}`,
+          });
+        }
+        await this.audit.record(tx, ctx, {
+          action: 'transaction.record_existing',
+          targetType: 'loan_request',
+          targetId: request.id,
+          fields: {
+            transactionNumber: created.number,
+            assetCodes: body.items.map((item) => item.scannedCode),
+            neededFrom: body.releasedOn,
+            dueDate: body.dueDate,
+            contact: true,
+          },
+        });
+        return {
+          status: 201,
+          body: await this.detailIn(tx, created.number, turnaroundBufferDays),
+        };
+      }),
+    );
+  }
+
   release(
     ctx: RequestContext,
     number: string,
@@ -486,14 +613,34 @@ export class TransactionsService {
     );
   }
 
+  /**
+   * The request's company, share-locked so an archive of it waits for this transaction, and
+   * refused when archived.
+   */
+  private async companyFor(tx: Tx, choice: CompanyChoice): Promise<{ id: string }> {
+    const company =
+      'id' in choice
+        ? await this.partners.share(tx, choice.id)
+        : await this.partners.findOrCreate(tx, choice.name, choice.type);
+    if (!company) throw new AppError(422, 'company_not_found', 'That company does not exist');
+    if (company.status === 'archived') {
+      throw new AppError(
+        422,
+        'company_archived',
+        `${company.name} is archived; restore it in Partners before filing for it`,
+      );
+    }
+    return company;
+  }
+
   private async detailIn(tx: Tx, number: string, bufferDays: number): Promise<TransactionDetail> {
     const record = await this.repo.byNumber(tx, number, manilaToday());
     if (!record) throw notFound();
-    const [units, extensions, accessories] = await Promise.all([
-      this.repo.units(tx, record.requestId),
-      record.loanId ? this.repo.extensions(tx, record.loanId) : Promise.resolve([]),
-      this.repo.accessoriesOf(tx, record.model.id),
-    ]);
+    // One transaction is one connection, which runs one query at a time: awaiting in turn is
+    // as fast, and pg 9 rejects overlapping queries on a client.
+    const units = await this.repo.units(tx, record.requestId);
+    const extensions = record.loanId ? await this.repo.extensions(tx, record.loanId) : [];
+    const accessories = await this.repo.accessoriesOf(tx, record.model.id);
     return { ...strip(record), accessories, units, extensions, bufferDays };
   }
 }

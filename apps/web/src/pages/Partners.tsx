@@ -1,6 +1,6 @@
 import type { OrgType, PartnerDetail, PartnerSummary } from '@wms/contracts';
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiSend } from '../api/client.js';
 import { useDebounced, useInvalidate, usePartnerDirectory } from '../api/queries.js';
@@ -37,6 +37,7 @@ export function Partners() {
   const table = readTableState(params, FILTERS);
   const q = useDebounced(table.q.trim());
   const creating = params.get('new') === '1';
+  const moved = useRef(false);
   const directory = usePartnerDirectory({
     page: table.page,
     pageSize: PAGE_SIZE,
@@ -178,8 +179,15 @@ export function Partners() {
       {creating && (
         <PartnerDialog
           partner={null}
-          onClose={() => setCreating(false)}
-          onSaved={(saved) => void navigate(`/partners/${saved.id}`)}
+          onClose={() => {
+            // Once saved, the page has moved to the new company: touching this page's search
+            // params now would navigate back to the list.
+            if (!moved.current) setCreating(false);
+          }}
+          onSaved={(saved) => {
+            moved.current = true;
+            void navigate(`/partners/${saved.id}`);
+          }}
         />
       )}
     </div>

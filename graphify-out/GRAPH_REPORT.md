@@ -1,16 +1,16 @@
 # Graph Report - Netpoleon  (2026-11-20)
 
 ## Corpus Check
-- 207 files · ~138,245 words
+- 225 files · ~153,674 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1949 nodes · 3666 edges · 204 communities (102 shown, 102 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.8)
+- 2081 nodes · 4055 edges · 216 communities (110 shown, 106 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 34 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e3dad282`
+- Built from commit: `5973d224`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -208,18 +208,30 @@
 - [[_COMMUNITY_Community 200|Community 200]]
 - [[_COMMUNITY_Community 201|Community 201]]
 - [[_COMMUNITY_Community 202|Community 202]]
+- [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
+- [[_COMMUNITY_Community 207|Community 207]]
+- [[_COMMUNITY_Community 208|Community 208]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 211|Community 211]]
+- [[_COMMUNITY_Community 212|Community 212]]
+- [[_COMMUNITY_Community 213|Community 213]]
+- [[_COMMUNITY_Community 214|Community 214]]
+- [[_COMMUNITY_Community 215|Community 215]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `RequestContext` - 75 edges
-2. `Outcome` - 41 edges
-3. `TransactionsRepository` - 32 edges
-4. `useAuth()` - 32 edges
-5. `Fixtures` - 31 edges
-6. `getTestDb()` - 29 edges
-7. `SettingsService` - 25 edges
-8. `rows()` - 25 edges
-9. `useToast()` - 25 edges
-10. `UnitsRepository` - 24 edges
+1. `RequestContext` - 86 edges
+2. `Outcome` - 50 edges
+3. `useAuth()` - 36 edges
+4. `useToast()` - 35 edges
+5. `TransactionsRepository` - 32 edges
+6. `Fixtures` - 32 edges
+7. `getTestDb()` - 32 edges
+8. `useInvalidate()` - 29 edges
+9. `maybeOne()` - 27 edges
+10. `useReference()` - 27 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Prod api service (loopback-bound port)` --shares_data_with--> `loadConfig()`  [INFERRED]
@@ -241,19 +253,19 @@
 - **Duplicate-safe mutating endpoint mechanisms** — _claude_rules_idempotency_concurrency_idempotency_key_store, _claude_rules_idempotency_concurrency_conditional_state_transition_update, _claude_rules_idempotency_concurrency_unique_constraint_recovery, _claude_rules_idempotency_concurrency_central_posting_layer, _claude_rules_idempotency_concurrency_double_fire_test [EXTRACTED 1.00]
 - **Safe shared-VPS deploy workflow** — docs_deploy_vps_read_only_server_pass, _claude_rules_vps_safety_fingerprint_before_after, _claude_rules_vps_safety_target_by_exact_name, _claude_rules_vps_safety_rollback_for_every_change, docs_deploy_vps_rollback_by_image_digest [INFERRED 0.85]
 
-## Communities (204 total, 102 thin omitted)
+## Communities (216 total, 106 thin omitted)
 
 ### Community 0 - "API App Composition"
 Cohesion: 0.08
-Nodes (32): AppDeps, authRoutes(), SIGN_IN_LIMIT, TOKEN_LIMIT, ClientInfo, catalogRoutes(), created, inspectionsRoutes() (+24 more)
+Nodes (33): AppDeps, authRoutes(), SIGN_IN_LIMIT, TOKEN_LIMIT, ClientInfo, catalogRoutes(), created, inspectionsRoutes() (+25 more)
 
 ### Community 1 - "Database Guarantee Tests"
-Cohesion: 0.23
-Nodes (10): ATTACKS, TABLES, OverviewRow, SeededStatus, StaffRole, connect(), getTestDb(), inRolledBackTransaction() (+2 more)
+Cohesion: 0.19
+Nodes (15): ATTACKS, TABLES, CONSOLE_INDEXES, HISTORY_TRIGGERS, RLS_TABLES, OverviewRow, SeededStatus, StaffRole (+7 more)
 
 ### Community 2 - "Typed Table Definitions"
 Cohesion: 0.05
-Nodes (60): Database, Tx, assetMovements, assetTransitions, auditLog, notifications, assets, categories (+52 more)
+Nodes (61): Database, Tx, assetMovements, assetTransitions, auditLog, notifications, assets, categories (+53 more)
 
 ### Community 3 - "Project Memory System"
 Cohesion: 0.25
@@ -264,12 +276,12 @@ Cohesion: 0.13
 Nodes (16): AppConfig, bindsBeyondLoopback(), ConfigError, crossFieldProblems(), DbConfig, loadConfig(), LOOPBACK_HOSTS, MailConfig (+8 more)
 
 ### Community 5 - "Architecture Decisions and Ops"
-Cohesion: 0.33
-Nodes (6): Create the first administrator, Local development start-up, Restore from backup, Rotate a secret, Runbook, Running the checks
+Cohesion: 0.29
+Nodes (7): Create the first administrator, Go-live: load the existing stock and the loans already out, Local development start-up, Restore from backup, Rotate a secret, Runbook, Running the checks
 
 ### Community 6 - "Role Bootstrap"
-Cohesion: 0.16
-Nodes (9): APP_ROLE_LIMITS, APP_ROLES, RoleBootstrapper, RoleName, RolePasswords, MIGRATIONS_DIR, secret(), setup() (+1 more)
+Cohesion: 0.13
+Nodes (11): APP_ROLE_LIMITS, APP_ROLES, RoleBootstrapper, RoleName, RolePasswords, bootstrap(), COMMANDS, migrate() (+3 more)
 
 ### Community 7 - "Root Tooling Manifest"
 Cohesion: 0.07
@@ -296,20 +308,20 @@ Cohesion: 0.13
 Nodes (14): default, dependencies, zod, exports, name, private, scripts, build (+6 more)
 
 ### Community 13 - "Shared API Contracts"
-Cohesion: 0.07
-Nodes (29): conditionGradeSchema, countSchema, idSchema, optionalNote(), userRefSchema, Inspection, INSPECTION_QUEUES, InspectionChecklist (+21 more)
+Cohesion: 0.11
+Nodes (18): conditionGradeSchema, optionalNote(), searchSchema, userRefSchema, Inspection, INSPECTION_QUEUES, InspectionChecklist, inspectionChecklistSchema (+10 more)
 
 ### Community 14 - "Data Model and Partner Wall"
 Cohesion: 0.20
 Nodes (9): File map, Foundation Scaffold Implementation Plan, Global Constraints, Review Focus, Task 1: Workspace skeleton, config and contracts packages, infra, CI, Task 2: Migrations, runner, role bootstrap, guarantee tests, Task 3: Typed schema, pools and the transaction wrapper, Task 4: API process — boot, health, errors, hardening (+1 more)
 
 ### Community 15 - "Lesson Guard Hook"
-Cohesion: 0.13
-Nodes (19): ApiError, apiGet(), apiSend(), exportUrl(), Listener, onUnauthenticated(), parse(), query() (+11 more)
+Cohesion: 0.09
+Nodes (26): ApiError, apiGet(), apiSend(), exportUrl(), Listener, onUnauthenticated(), parse(), query() (+18 more)
 
 ### Community 16 - "Migration Runner"
-Cohesion: 0.13
-Nodes (10): bootstrap(), COMMANDS, migrate(), MIGRATIONS_DIR, MissingEnvError, requireEnv(), MigrationChecksumError, MigrationFile (+2 more)
+Cohesion: 0.16
+Nodes (8): MigrationChecksumError, MigrationFile, MigrationResult, MigrationRunner, MIGRATIONS_DIR, secret(), setup(), TestDb
 
 ### Community 20 - "Build Config A"
 Cohesion: 0.29
@@ -356,12 +368,12 @@ Cohesion: 0.40
 Nodes (4): compilerOptions, noEmit, extends, include
 
 ### Community 43 - "Community 43"
-Cohesion: 0.06
-Nodes (34): AssetStatus, BulkResult, bulkResultSchema, BulkRow, bulkRowSchema, CategoryRef, CompanyRef, companyRefSchema (+26 more)
+Cohesion: 0.08
+Nodes (24): AssetStatus, BulkResult, bulkResultSchema, BulkRow, bulkRowSchema, CategoryRef, CompanyRef, CONDITION_GRADES (+16 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.10
-Nodes (29): newIntentKey(), useUnit(), Select(), ActionDialog(), BaseProps, ReasonDialog(), ShelfDialog(), ShelfSelect() (+21 more)
+Nodes (27): newIntentKey(), useInspectionQueue(), Protected(), leftOnPurpose(), AccessoryChecklist(), ActionDialog(), BaseProps, ReasonDialog() (+19 more)
 
 ### Community 45 - "Community 45"
 Cohesion: 0.17
@@ -376,20 +388,20 @@ Cohesion: 0.07
 Nodes (27): dependencies, @fontsource-variable/manrope, lucide-react, qrcode-generator, react, react-dom, react-router-dom, @tanstack/react-query (+19 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.06
-Nodes (14): CatalogService, ReportsService, RequestState, notInStage(), TransactionsService, notFound(), UnitsService, wrongStatus() (+6 more)
+Cohesion: 0.08
+Nodes (9): CatalogService, PartnersService, RequestState, notInStage(), TransactionsService, UnitsService, UsersService, RequestContext (+1 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.05
-Nodes (18): AuthRepository, LoginCandidate, PROFILE_COLUMNS, ProfileRow, toProfile(), orderBy(), SORTS, toTransaction() (+10 more)
+Cohesion: 0.09
+Nodes (10): orderBy(), SORTS, toTransaction(), TRANSACTION_SELECT, TransactionRecord, TransactionRow, TransactionsRepository, where() (+2 more)
 
 ### Community 50 - "Community 50"
 Cohesion: 0.19
 Nodes (20): OrgType, Assignment, LendingSinks, StaffIds, Transaction, AuditRow, ConditionGrade, CounterRow (+12 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.11
-Nodes (23): AppError, PARENT_KIND, healthRoutes(), okSchema, readySchema, OUTCOME_MOVE, ASSIGNABLE, notFound() (+15 more)
+Cohesion: 0.10
+Nodes (26): AppError, PARENT_KIND, OUTCOME_MOVE, DASHBOARD, ASSIGNABLE, notFound(), strip(), notFound() (+18 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.13
@@ -405,19 +417,19 @@ Nodes (5): Borrower, requestNoPrefix(), Scenarios, SeedPlanBuilder, smoothPath()
 
 ### Community 56 - "Community 56"
 Cohesion: 0.12
-Nodes (37): useAudit(), useInvalidate(), Protected(), leftOnPurpose(), useAuth(), useCurrentUser(), useReference(), PersonMenu() (+29 more)
+Nodes (23): useReport(), useTracking(), BarGroup, BarSeries, Donut(), GroupedBars(), HBars(), niceCeiling() (+15 more)
 
 ### Community 57 - "Community 57"
 Cohesion: 0.06
-Nodes (34): emailSchema, phoneSchema, queryList(), USER_STATUSES, usernameSchema, userStatusSchema, ACTION_LABELS, ACTIONS (+26 more)
+Nodes (33): idSchema, queryList(), USER_STATUSES, usernameSchema, userStatusSchema, ACTION_LABELS, ACTIONS, actionSchema (+25 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.11
-Nodes (23): useAvailability(), useDebounced(), usePartners(), SelectOption, BatchAction, Changes, Column, CsvCell (+15 more)
+Cohesion: 0.10
+Nodes (50): useDebounced(), useInvalidate(), usePartner(), usePartnerDirectory(), usePartners(), useTransactions(), useUnits(), useReference() (+42 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.10
-Nodes (25): Paged, STALE, useAlerts(), useCategories(), useInspectionQueue(), useLocations(), useStageCounts(), useTransaction() (+17 more)
+Cohesion: 0.09
+Nodes (34): useAlerts(), useAudit(), useStageCounts(), useUsers(), useAuth(), useCurrentUser(), GlobalSearch(), NAV (+26 more)
 
 ### Community 61 - "Community 61"
 Cohesion: 0.15
@@ -425,39 +437,39 @@ Nodes (11): check(), { chromium }, loanOf(), readState(), require, results, TOUR
 
 ### Community 62 - "Community 62"
 Cohesion: 0.13
-Nodes (13): useSettingsQuery(), QrCode(), Draft, GeneralSection(), isSectionId(), KIND_LABELS, LabelSection(), LoanSection() (+5 more)
+Nodes (17): useCategories(), useLocations(), useSettingsQuery(), CategoriesSection(), Draft, GeneralSection(), isSectionId(), KIND_LABELS (+9 more)
 
 ### Community 63 - "Community 63"
 Cohesion: 0.17
 Nodes (15): assetCode(), assetCodePrefix(), Catalogue, CatalogueBuilder, SERIAL_ALPHABET, CATEGORY_SPECS, CategorySpec, AssetRow (+7 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.07
-Nodes (17): InspectionsRepository, QueueRow, ReturnContext, InspectionsService, containsPattern(), decodeCursor(), MOVEMENT_SELECT, movementCursor() (+9 more)
+Cohesion: 0.13
+Nodes (4): decodeCursor(), orderBy(), UnitsRepository, where()
 
 ### Community 65 - "Community 65"
 Cohesion: 0.22
 Nodes (5): ColumnShape, columnsInDatabase(), schemaExports, tables, views
 
 ### Community 67 - "Community 67"
-Cohesion: 0.21
-Nodes (8): apps, urls, configFor(), DatabaseUrls, registerProbeRoutes(), TestApp, TestAppOptions, TestApps
+Cohesion: 0.17
+Nodes (10): apps, urls, configFor(), DatabaseUrls, registerProbeRoutes(), TestApp, TestAppOptions, TestApps (+2 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.07
-Nodes (8): main(), CatalogRepository, AGE_BANDS, MOVEMENT_SELECT, ReportsRepository, toMovement(), one(), rows()
+Cohesion: 0.11
+Nodes (4): CatalogRepository, ReportsRepository, userRef(), rows()
 
 ### Community 69 - "Community 69"
 Cohesion: 0.06
-Nodes (34): contactSchema, modelRefSchema, orgTypeSchema, TRANSACTION_STAGES, transactionNumberSchema, transactionStageSchema, ApproveTransactionBody, BulkRejectBody (+26 more)
+Nodes (35): contactSchema, modelRefSchema, TRANSACTION_STAGES, transactionNumberSchema, transactionStageSchema, ApproveTransactionBody, BulkRejectBody, Candidates (+27 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.05
-Nodes (57): useDashboard(), useReport(), useTracking(), BarGroup, BarSeries, Donut(), GroupedBars(), HBars() (+49 more)
+Cohesion: 0.08
+Nodes (28): useDashboard(), Sk(), ButtonProps, CATEGORY_IMAGES, CategoryThumb(), Crumb, Empty(), order() (+20 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.07
-Nodes (33): useCandidates(), CONDITION_OPTIONS, DateField(), monthTitle, Placement, SK_TABS, SkPageKind, SkTable() (+25 more)
+Cohesion: 0.08
+Nodes (32): useCandidates(), useTransaction(), CONDITION_OPTIONS, DateField(), monthTitle, Placement, SK_TABS, SkPage() (+24 more)
 
 ### Community 72 - "Community 72"
 Cohesion: 0.15
@@ -468,24 +480,20 @@ Cohesion: 0.24
 Nodes (9): DATABASE_CONFLICTS, describeError(), describeValidationFailure(), errorHandlerPlugin, FASTIFY_CLIENT_ERRORS, INTERNAL_ERROR, isFastifyClientError(), ProblemDescriptor (+1 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.06
-Nodes (34): monthKeySchema, MOVEMENT_TYPES, Aging, agingResponse, Alert, ALERT_KINDS, AlertKind, alertKindSchema (+26 more)
+Cohesion: 0.05
+Nodes (36): ASSET_STATUSES, monthKeySchema, MOVEMENT_TYPES, uniqueArray(), Aging, agingResponse, Alert, ALERT_KINDS (+28 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.17
 Nodes (12): 1. Read the server first (read-only), 2. Decide from the output, 3. Environment variables, 3a. Set by the operator in `wms.env`, 3b. Set by compose, never by hand, 4. Prepare the server, 5. Start the stack, 6. Reverse proxy (+4 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.18
-Nodes (10): 1. Scope, 2. Decisions that reconcile the screens with the database, 3. Speed: what makes a page feel instant, 4. API surface (`/api/v1`), 5. Build waves, 6. How it gets falsified, 7. Deploy — gated on facts only the owner or the server can give, 8. Checklist (ticked when verified, not when written) (+2 more)
+Cohesion: 0.17
+Nodes (11): 10. Decisions of 2026-11-20, 1. Scope, 2. Decisions that reconcile the screens with the database, 3. Speed: what makes a page feel instant, 4. API surface (`/api/v1`), 5. Build waves, 6. How it gets falsified, 7. Deploy — gated on facts only the owner or the server can give (+3 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.07
-Nodes (30): ASSET_STATUSES, assetCodeSchema, assetStatusSchema, movementTypeSchema, multilineText(), reservationStatusSchema, serialSchema, uniqueArray() (+22 more)
-
-### Community 78 - "Community 78"
-Cohesion: 0.12
-Nodes (7): AuditWriter, originOf(), hashToken(), SessionLimits, SessionService, positiveInt(), SettingsService
+Cohesion: 0.06
+Nodes (31): assetCodeSchema, assetStatusSchema, movementTypeSchema, multilineText(), reservationStatusSchema, serialSchema, BulkRelocateBody, CompleteRepairBody (+23 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.18
@@ -496,12 +504,12 @@ Cohesion: 0.20
 Nodes (9): Decisions, Demo accounts (demo data only, no real system behind them), Every page (all slices), Partner portal (S3), Public, Slice 1 checklist, Slices, Staff console (+1 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.25
-Nodes (9): fileRequest(), registerUnit(), Browser, buildWorld(), dayFromToday(), seedStaff(), StaffRole, unique() (+1 more)
+Cohesion: 0.18
+Nodes (16): fileRequest(), registerUnit(), Detail, existing(), ImportResult, row(), stockedUnit(), companyName() (+8 more)
 
 ### Community 82 - "Community 82"
-Cohesion: 0.22
-Nodes (12): enqueue(), logger, rowOf(), bootstrapperFor(), createScratchDatabase(), passwordOf(), ProvidedContext, ScratchDatabase (+4 more)
+Cohesion: 0.19
+Nodes (11): unitCount(), enqueue(), logger, rowOf(), bootstrapperFor(), createScratchDatabase(), passwordOf(), withClient() (+3 more)
 
 ### Community 83 - "Community 83"
 Cohesion: 0.30
@@ -568,19 +576,19 @@ Cohesion: 0.50
 Nodes (4): 6. How booking works, Loading what already exists — **[CALL]**, Scanning and labels — **[CALL]**, The cases the happy path hides — all **[CALL]**
 
 ### Community 99 - "Community 99"
-Cohesion: 0.50
-Nodes (3): CONSOLE_INDEXES, HISTORY_TRIGGERS, RLS_TABLES
+Cohesion: 0.11
+Nodes (20): QueueRow, ReturnContext, AGE_BANDS, MOVEMENT_SELECT, checkImportRows(), GRADE_WORDS, ImportLookup, ImportPlan (+12 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.07
-Nodes (27): Bootstrap, bootstrapResponse, ChangePasswordBody, ForgotPasswordBody, LoginBody, SessionUser, sessionUserSchema, SetPasswordWithTokenBody (+19 more)
+Nodes (28): Bootstrap, bootstrapResponse, ChangePasswordBody, ForgotPasswordBody, LoginBody, SessionUser, sessionUserSchema, SetPasswordWithTokenBody (+20 more)
 
 ### Community 192 - "Community 192"
-Cohesion: 0.17
+Cohesion: 0.15
 Nodes (6): AlertRow, AlertsRepository, RECENT_DAYS, ALERT_TITLES, AlertsService, SWITCH
 
 ### Community 193 - "Community 193"
-Cohesion: 0.15
+Cohesion: 0.14
 Nodes (6): SORTS, toUser(), USER_SELECT, UserRow, UsersRepository, UserState
 
 ### Community 194 - "Community 194"
@@ -592,40 +600,76 @@ Cohesion: 0.33
 Nodes (3): SeedPlan, Column, SeedWriter
 
 ### Community 196 - "Community 196"
-Cohesion: 0.17
-Nodes (5): AuthService, WRONG_CREDENTIALS(), Actor, FastifyRequest, permissionsFor()
+Cohesion: 0.12
+Nodes (6): AuthService, WRONG_CREDENTIALS(), Actor, FastifyRequest, NewSession, permissionsFor()
 
 ### Community 197 - "Community 197"
 Cohesion: 0.28
 Nodes (4): LogMailer, Mail, Mailer, SmtpMailer
 
 ### Community 198 - "Community 198"
-Cohesion: 0.50
-Nodes (3): Cell, downloadCsv(), toCsv()
+Cohesion: 0.10
+Nodes (18): SelectOption, SkTable(), BatchAction, Changes, CsvCell, SortValue, TableExport, TableState (+10 more)
+
+### Community 199 - "Community 199"
+Cohesion: 0.29
+Nodes (4): healthRoutes(), okSchema, readySchema, HealthService
 
 ### Community 200 - "Community 200"
 Cohesion: 0.50
 Nodes (3): keep, backup.sh script, weeks
 
+### Community 201 - "Community 201"
+Cohesion: 0.08
+Nodes (23): companyRefSchema, emailSchema, ORG_STATUSES, ORG_TYPES, orgStatusSchema, orgTypeSchema, AddContactBody, ContactParams (+15 more)
+
+### Community 204 - "Community 204"
+Cohesion: 0.10
+Nodes (7): AuthRepository, LoginCandidate, PROFILE_COLUMNS, ProfileRow, toProfile(), hashToken(), SessionService
+
+### Community 205 - "Community 205"
+Cohesion: 0.11
+Nodes (4): main(), InspectionsRepository, releasedAt(), one()
+
+### Community 206 - "Community 206"
+Cohesion: 0.15
+Nodes (14): countSchema, queryInt(), cursorPaged(), Page, paged(), pageOf(), pageQuery, pageQuerySchema (+6 more)
+
+### Community 208 - "Community 208"
+Cohesion: 0.13
+Nodes (7): ContactInput, PartnerState, SORTS, SUMMARY_SELECT, SummaryRow, toSummary(), rowCount()
+
+### Community 209 - "Community 209"
+Cohesion: 0.24
+Nodes (6): AssetLabel(), QrCode(), Barcode, code128(), PATTERNS, widths()
+
+### Community 210 - "Community 210"
+Cohesion: 0.27
+Nodes (3): InspectionsService, UnitState, wrongStatus()
+
+### Community 213 - "Community 213"
+Cohesion: 0.29
+Nodes (5): Guide, GUIDES, Help(), QUESTIONS, ROLES
+
 ## Knowledge Gaps
-- **777 isolated node(s):** `singleQuote`, `trailingComma`, `printWidth`, `endOfLine`, `name` (+772 more)
+- **819 isolated node(s):** `singleQuote`, `trailingComma`, `printWidth`, `endOfLine`, `name` (+814 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **102 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **106 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `can()` connect `Community 56` to `Community 48`, `API App Composition`, `Community 58`, `Community 57`?**
-  _High betweenness centrality (0.253) - this node is a cross-community bridge._
+- **Why does `can()` connect `Community 58` to `API App Composition`, `Community 70`, `Community 71`, `Community 44`, `Community 214`, `Community 56`, `Community 57`, `Community 62`?**
+  _High betweenness centrality (0.333) - this node is a cross-community bridge._
+- **Why does `RequestContext` connect `Community 48` to `Community 192`, `API App Composition`, `Community 196`, `Community 210`, `Community 212`, `Community 52`, `Community 214`?**
+  _High betweenness centrality (0.149) - this node is a cross-community bridge._
 - **Why does `smoothPath()` connect `Community 55` to `Community 53`?**
-  _High betweenness centrality (0.134) - this node is a cross-community bridge._
-- **Why does `RequestContext` connect `Community 48` to `Community 192`, `Community 64`, `API App Composition`, `Community 196`, `Community 78`, `Community 52`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
+  _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **What connects `singleQuote`, `trailingComma`, `printWidth` to the rest of the system?**
-  _806 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _848 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `API App Composition` be split into smaller, more focused modules?**
-  _Cohesion score 0.08489795918367347 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08144796380090498 - nodes in this community are weakly interconnected._
 - **Should `Typed Table Definitions` be split into smaller, more focused modules?**
-  _Cohesion score 0.054363796650014694 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05335628227194492 - nodes in this community are weakly interconnected._
 - **Should `Code Rules and CI` be split into smaller, more focused modules?**
   _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._

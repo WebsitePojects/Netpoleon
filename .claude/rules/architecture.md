@@ -69,6 +69,14 @@ These hold even if application code is wrong. Each has an attack test in
   that keeps search, filters, sort and page in the URL for the page's query to read.
 - Repositories use drizzle's `sql` tag: arrays bind as `IN ${list}`, timestamps come back as
   strings (see lessons 2026-11-19).
+- `modules/partners` owns borrowing companies and their contacts; `TransactionsService` takes its
+  repository to resolve a request's company (share-locked, archived refused) and remember the
+  contact. Catalog no longer serves `/partners`.
+- Go-live paths: `POST /units/import` (checks a whole file in `units.import.ts`, a pure function,
+  then registers all or nothing) and `POST /transactions/existing` (`loan.backdate`, admin only:
+  files, reserves and releases in one transaction with `loans.is_backdated`).
+- One transaction is one connection: never `Promise.all` queries on the same `tx` (pg 9 rejects
+  overlapping queries on a client); await them in turn.
 - **Never insert into `assets` with Drizzle's `insert()`.** Drizzle names every column and sends
   `default` for the ones you omit, and Postgres checks privilege on every named column — so the
   statement names `status` and fails with 42501 by design. The asset repository inserts with

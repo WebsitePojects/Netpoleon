@@ -1,6 +1,6 @@
 import type { BulkResult, ConditionGrade, Model, Unit } from '@wms/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, Plus, Tags } from 'lucide-react';
+import { ArrowRightLeft, FileUp, Plus, Tags } from 'lucide-react';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiSend, exportUrl, newIntentKey } from '../api/client.js';
@@ -25,6 +25,7 @@ import {
   useToast,
 } from '../components/ui.js';
 import { ACTIVE_STATUSES, CONDITION_LABELS, STATUS_LABELS } from '../lib/labels.js';
+import { ImportDialog } from './UnitImport.js';
 import { useSubmit } from '../lib/hooks.js';
 
 const PAGE_SIZE = 10;
@@ -45,6 +46,7 @@ export function Units() {
   const invalidate = useInvalidate();
   const [params] = useSearchParams();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [moving, setMoving] = useState<{ units: Unit[]; clear: () => void } | null>(null);
 
   const table = readTableState(params, FILTERS);
@@ -160,9 +162,14 @@ export function Units() {
         lead="Complete list of demo assets with real-time status"
         actions={
           can('unit.register') && (
-            <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
-              Add Asset
-            </Button>
+            <>
+              <Button icon={FileUp} onClick={() => setImporting(true)}>
+                Import
+              </Button>
+              <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+                Add Asset
+              </Button>
+            </>
           )
         }
       />
@@ -227,6 +234,7 @@ export function Units() {
       </div>
 
       {adding && <RegisterDialog onClose={() => setAdding(false)} />}
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
       {moving && (
         <ShelfDialog
           title={`Move ${moving.units.length} unit${moving.units.length === 1 ? '' : 's'}`}

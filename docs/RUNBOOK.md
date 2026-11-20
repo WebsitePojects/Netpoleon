@@ -145,3 +145,23 @@ See `docs/DEPLOY-vps.md` section 5. Locally, with the variables from step 6:
 `corepack pnpm --filter @wms/api admin:create -- --username <name> --email <address> --name "<full name>"`.
 After that, administrators invite everyone else from **Users → Add user**, which gives a
 one-time link to hand over (or mails it once SMTP is configured).
+
+## Go-live: load the existing stock and the loans already out
+
+Do these once, in this order, after the first administrator exists and the categories,
+models and shelves are set up in **Settings**.
+
+1. **Units on hand.** **Demo Units → Import** takes a CSV saved from a spreadsheet (up to 500
+   rows per file; **Download a template** gives the columns: model, serial, shelf, condition,
+   notes). The file is checked first and every problem is listed by spreadsheet row; nothing is
+   written until the whole file is clean, and then every unit is registered and stocked at
+   once. Model is "Brand Model" exactly as Settings lists it; shelf is the shelf code.
+2. **Units out on demo today.** Import them too (onto the shelf they return to), then record
+   each borrowing with **Borrow / Return → Record existing loan** (administrators only): company,
+   contact, the day the units really left, the expected return, and the units scanned. It is
+   filed, reserved and released in one step, marked as recorded at go-live, and shows as overdue
+   at once if the return date has passed. One model per record.
+3. **Labels.** Tick the imported units on **Demo Units → Print labels**; set the printer to 100%
+   scale. Each label carries the asset code as a QR code and a Code 128 barcode.
+4. **Partners** fill themselves as requests are filed; companies and contacts can also be added,
+   edited or archived there.

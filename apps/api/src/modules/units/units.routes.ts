@@ -1,5 +1,7 @@
 import {
   bulkRelocateBody,
+  importUnitsBody,
+  importUnitsResponse,
   bulkResultSchema,
   completeRepairBody,
   exportUnitsQuery,
@@ -76,6 +78,21 @@ export function unitsRoutes(service: UnitsService, guard: Guard): FastifyPluginC
         ),
     );
 
+    app.post(
+      '/units/import',
+      {
+        // A 500-row file is about 100 KB of JSON; the default 1 MB limit already covers it.
+        schema: {
+          body: importUnitsBody,
+          response: { 200: importUnitsResponse, 201: importUnitsResponse },
+        },
+      },
+      async (request, reply) =>
+        sendOutcome(
+          reply,
+          await service.importUnits(guard.require(request, 'unit.register'), request.body),
+        ),
+    );
     app.post(
       '/units/bulk-relocate',
       { schema: { body: bulkRelocateBody, response: { 200: bulkResultSchema } } },

@@ -22,3 +22,50 @@ export function downloadCsv(filename: string, header: string[], rows: Cell[][]):
   link.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Reads CSV as spreadsheets write it (RFC 4180): fields separated by commas, a field in double
+ * quotes may hold commas, line breaks and doubled quotes. Excel's byte-order mark and Windows
+ * line endings are accepted; blank lines are skipped.
+ */
+export function parseCsv(text: string): string[][] {
+  const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+
+  const endField = () => {
+    row.push(field);
+    field = '';
+  };
+  const endRow = () => {
+    endField();
+    if (row.some((value) => value.trim() !== '')) rows.push(row);
+    row = [];
+  };
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"' && source[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        field += char;
+      }
+    } else if (char === '"' && field === '') {
+      quoted = true;
+    } else if (char === ',') {
+      endField();
+    } else if (char === '\n') {
+      endRow();
+    } else if (char !== '\r') {
+      field += char;
+    }
+  }
+  if (field !== '' || row.length > 0) endRow();
+  return rows;
+}

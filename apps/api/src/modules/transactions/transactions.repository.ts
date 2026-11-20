@@ -133,6 +133,13 @@ export interface RequestState {
   contactPhone: string;
 }
 
+/** Now, or noon in Manila on a back-dated release day. */
+function releasedAt(releasedOn: string | null): SQL {
+  return releasedOn === null
+    ? sql`now()`
+    : sql`((${releasedOn}::date + time '12:00') AT TIME ZONE 'Asia/Manila')`;
+}
+
 export class TransactionsRepository {
   async list(
     tx: Tx,
@@ -378,13 +385,23 @@ export class TransactionsRepository {
     return maybeOne(tx, sql`SELECT id FROM loans WHERE loan_request_id = ${requestId}`);
   }
 
-  createLoan(tx: Tx, request: RequestState, releasedBy: string): Promise<{ id: string }> {
+  /**
+   * `releasedOn` back-dates the loan to noon, Manila time, of that day and marks it
+   * `is_backdated` (a loan recorded at go-live); without it the loan starts now.
+   */
+  createLoan(
+    tx: Tx,
+    request: RequestState,
+    releasedBy: string,
+    releasedOn: string | null = null,
+  ): Promise<{ id: string }> {
     return one(
       tx,
       sql`INSERT INTO loans (loan_no, loan_request_id, partner_org_id, contact_name, contact_email, contact_phone,
-                             released_by_user_id, released_at, due_date)
+                             released_by_user_id, released_at, due_date, is_backdated)
           VALUES (${request.number}, ${request.id}, ${request.partnerOrgId}, ${request.contactName},
-                  ${request.contactEmail}, ${request.contactPhone}, ${releasedBy}, now(), ${request.neededUntil}::date)
+                  ${request.contactEmail}, ${request.contactPhone}, ${releasedBy}, ${releasedAt(releasedOn)},
+                  ${request.neededUntil}::date, ${releasedOn !== null})
           RETURNING id`,
     );
   }
@@ -397,12 +414,14 @@ export class TransactionsRepository {
       assetId: string;
       reservationId: string;
       accessoriesOut: string[];
+      releasedOn?: string | null;
     },
   ): Promise<{ id: string }> {
     return one(
       tx,
       sql`INSERT INTO loan_items (loan_id, partner_org_id, asset_id, reservation_id, released_at, accessories_out)
-          VALUES (${input.loanId}, ${input.partnerOrgId}, ${input.assetId}, ${input.reservationId}, now(),
+          VALUES (${input.loanId}, ${input.partnerOrgId}, ${input.assetId}, ${input.reservationId},
+                  ${releasedAt(input.releasedOn ?? null)},
                   ${JSON.stringify(input.accessoriesOut)}::jsonb)
           RETURNING id`,
     );

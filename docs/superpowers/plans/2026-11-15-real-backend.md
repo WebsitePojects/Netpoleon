@@ -271,3 +271,21 @@ major findings were confirmed. Each correction below is binding.
 **Deferred, said plainly:** contact anonymisation, the weekly automatic restore check and the
 26-hour backup alert, stale-heartbeat and parked-outbox alerting. The backup script, a manual
 restore drill and the heartbeat row itself are in scope.
+
+## 10. Decisions of 2026-11-20
+
+- **[USER] This backend is `main`.** A teammate's parallel slice 2a-2d build had landed on `main`.
+  The owner, who manages the project, chose to keep this full-lifecycle build. `main`'s
+  history is kept (merge with `-s ours`), its tip is tagged `archive/main-2026-11-15`, and its
+  partner directory, label sheet with barcode and help centre were ported as new commits.
+- **[CALL] No separate stock ledger.** Demo units are serial-tracked; `asset_movements` is the
+  per-unit ledger (append-only, the only way status changes) and every quantity view (status
+  counts, inflow/outflow, availability, aging, utilization) is derived from it. A quantity
+  ledger would duplicate it and could disagree with it.
+- **[CALL] Procurement is out of scope.** Proposal PITS-NTP-2026-001 promises the lending
+  lifecycle; purchasing (suppliers, purchase orders, receiving, costs) is not in it. If the
+  client wants it, it is a priced change request that feeds the Registration step.
+- **[CALL] Go-live gaps closed:** bulk CSV import of the existing stock (`POST /units/import`,
+  dry run first, all or nothing) and back-dated recording of loans already out
+  (`POST /transactions/existing`, admin only, `loans.is_backdated`). Partner portal and custom
+  report builders stay later phases.

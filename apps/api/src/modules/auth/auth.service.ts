@@ -186,12 +186,12 @@ export class AuthService {
   }
 
   private async bootstrapIn(tx: Tx, user: SessionUser): Promise<Bootstrap> {
-    const [settings, categories, locations, models] = await Promise.all([
-      this.settings.get(),
-      this.catalog.listCategories(tx),
-      this.catalog.listLocations(tx),
-      this.catalog.listModels(tx),
-    ]);
+    // One transaction is one connection, which runs one query at a time: awaiting in turn is
+    // as fast, and pg 9 rejects overlapping queries on a client.
+    const settings = await this.settings.get();
+    const categories = await this.catalog.listCategories(tx);
+    const locations = await this.catalog.listLocations(tx);
+    const models = await this.catalog.listModels(tx);
     return {
       user,
       permissions: permissionsFor(user.role),

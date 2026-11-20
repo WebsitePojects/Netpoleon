@@ -121,6 +121,47 @@ export const registerUnitBody = z.strictObject({
 });
 export type RegisterUnitBody = z.infer<typeof registerUnitBody>;
 
+// ---------------------------------------------------------------------------------------------
+// Bulk import (go-live): the existing stock, one row per unit, from a spreadsheet.
+// ---------------------------------------------------------------------------------------------
+
+/** 480 units are expected at go-live; one file of up to 500 covers them in one go. */
+export const MAX_IMPORT_ROWS = 500;
+
+/**
+ * One row as the spreadsheet holds it. Shapes are bounded here; the meaning (does the model
+ * exist, is the serial valid and free) is checked per row by the server, so every problem in a
+ * file comes back at once instead of the first one stopping the request.
+ */
+export const importUnitRowSchema = z.strictObject({
+  model: z.string().max(200),
+  serial: z.string().max(200),
+  shelf: z.string().max(60),
+  condition: z.string().max(20).default(''),
+  notes: z.string().max(NOTE_MAX).default(''),
+});
+export type ImportUnitRow = z.infer<typeof importUnitRowSchema>;
+
+/** `dryRun` checks the file and writes nothing; the real run is all or nothing. */
+export const importUnitsBody = z.strictObject({
+  dryRun: z.boolean().default(false),
+  rows: z.array(importUnitRowSchema).min(1).max(MAX_IMPORT_ROWS),
+});
+export type ImportUnitsBody = z.infer<typeof importUnitsBody>;
+
+export const IMPORT_FIELDS = ['model', 'serial', 'shelf', 'condition', 'notes'] as const;
+
+export const importUnitsResponse = z.object({
+  valid: z.boolean(),
+  /** One entry per problem; `row` counts from 1, the first data row of the file. */
+  errors: z.array(
+    z.object({ row: z.int().min(1), field: z.enum(IMPORT_FIELDS), message: z.string() }),
+  ),
+  /** The asset codes given, in file order. Empty on a dry run. */
+  created: z.array(z.object({ row: z.int().min(1), code: z.string() })),
+});
+export type ImportUnitsResponse = z.infer<typeof importUnitsResponse>;
+
 export const updateUnitBody = z
   .strictObject({
     serial: serialSchema,

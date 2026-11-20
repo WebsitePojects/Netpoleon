@@ -128,6 +128,15 @@ export type ExportTransactionsQuery = z.infer<typeof exportTransactionsQuery>;
 export const stageCountsResponse = z.record(transactionStageSchema, countSchema);
 export type StageCounts = z.infer<typeof stageCountsResponse>;
 
+/** Units scanned out, each with the accessories that leave with it. */
+const releaseItemsSchema = z
+  .array(z.strictObject({ scannedCode: assetCodeSchema, accessoriesOut: accessoryListSchema }))
+  .min(1)
+  .max(MAX_UNITS_PER_REQUEST)
+  .refine((items) => new Set(items.map((item) => item.scannedCode)).size === items.length, {
+    error: 'must not scan a unit twice',
+  });
+
 /** An existing company by id, or a new one by name and type (plan R1). */
 export const companyChoiceSchema = z.union([
   z.strictObject({ id: idSchema }),
@@ -152,6 +161,27 @@ export const createTransactionBody = z
   });
 export type CreateTransactionBody = z.infer<typeof createTransactionBody>;
 
+/**
+ * A loan that was already out before the system went live (admin only). It is filed, reserved
+ * and released in one step, back-dated to when the units really left, and marked as such.
+ * One model per record, like every request; units are scanned as at a normal release.
+ */
+export const recordExistingLoanBody = z
+  .strictObject({
+    company: companyChoiceSchema,
+    contact: z.strictObject({ name: text(NAME_MAX), email: emailSchema, phone: phoneSchema }),
+    purpose: text(SHORT_TEXT_MAX),
+    endCustomer: text(SHORT_TEXT_MAX).nullable().default(null),
+    releasedOn: dateKeySchema,
+    dueDate: dateKeySchema,
+    items: releaseItemsSchema,
+  })
+  .refine((body) => body.dueDate >= body.releasedOn, {
+    error: 'must not be before releasedOn',
+    path: ['dueDate'],
+  });
+export type RecordExistingLoanBody = z.infer<typeof recordExistingLoanBody>;
+
 export const approveTransactionBody = z.strictObject({
   assetCodes: uniqueArray(assetCodeSchema, MAX_UNITS_PER_REQUEST),
 });
@@ -161,15 +191,7 @@ export const transactionReasonBody = z.strictObject({ reason: multilineText(REAS
 export type TransactionReasonBody = z.infer<typeof transactionReasonBody>;
 
 /** Release scans each unit out and records the accessories that went with it. */
-export const releaseTransactionBody = z.strictObject({
-  items: z
-    .array(z.strictObject({ scannedCode: assetCodeSchema, accessoriesOut: accessoryListSchema }))
-    .min(1)
-    .max(MAX_UNITS_PER_REQUEST)
-    .refine((items) => new Set(items.map((item) => item.scannedCode)).size === items.length, {
-      error: 'must not scan a unit twice',
-    }),
-});
+export const releaseTransactionBody = z.strictObject({ items: releaseItemsSchema });
 export type ReleaseTransactionBody = z.infer<typeof releaseTransactionBody>;
 
 /** Units come back one at a time: scan, tick what came back, note anything wrong. */

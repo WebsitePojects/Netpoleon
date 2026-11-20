@@ -8,6 +8,24 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-20
+- **Fetch and compare `origin/main` before merging a long-lived branch.** A teammate had built a
+  second, parallel backend on `main` (slices 2a-2d) while this branch built the full lifecycle;
+  the fast-forward push was rejected and a trial merge showed 58 conflicting files and two
+  migrations numbered 0011. Resolved without rewriting history: tag the remote tip
+  (`archive/main-2026-11-15`), merge it with `-s ours`, then port what it had that this branch
+  lacked (partner directory, label sheet with barcode, help) as new commits. Run
+  `git fetch && git log --oneline HEAD..origin/main` before starting any merge to `main`.
+- **A dialog that navigates away must not touch the old page's search params when it closes.**
+  `setSearchParams` resolves against the route that owns the hook, so "Add company" landed on
+  the new company and was bounced straight back to `/partners`. Set a ref when the dialog has
+  navigated and skip the URL change in `onClose` (Borrow's request dialog already did this).
+  Only the browser run caught it; the API tests could not.
+- **`Promise.all` over one transaction's queries only queues them on one connection.** It is no
+  faster, it printed pg's "client is already executing a query" deprecation on every detail
+  read, and pg 9 will reject it. Await queries on a `tx` in turn.
+- **`cat > file` in a heredoc overwrote an existing `apps/web/src/lib/csv.ts` unseen.** The
+  typecheck caught the missing `downloadCsv` export. Check whether a path exists before writing
+  a "new" file with the shell; the Write tool refuses to overwrite a file it has not read.
 - **Postgres reads `POSTGRES_PASSWORD` only when the data volume is first created.** Changing
   the superuser password in the env file afterwards does nothing; change it inside the database
   first. App-role passwords are different: `migrate` re-runs role bootstrap, which resets them.
