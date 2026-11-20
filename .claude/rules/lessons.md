@@ -8,6 +8,20 @@
 > Keep it to what a future session needs to avoid the trap — not a changelog.
 
 ## 2026-11-20
+- **Check every behaviour a user document claims against the code, not memory.** The first
+  handbook draft said the overdue check ran every morning (it runs hourly), that a unit sent to
+  repair flags its next booking (only an overdue unit does), and that missing-accessory alerts
+  close when resolved (they show for 30 days). Grep the job, the alert query and the grant
+  table before writing a sentence about them.
+- **Screenshots for documents come from the live demo with writes blocked at the network
+  layer.** `docs/handbook/capture.mjs` aborts every API call except GET and sign-in, so opening
+  dialogs and typing into them is safe; some buttons (Start inspection, Mark as read, the user
+  switch) act on a single click with no dialog. Dialogs are drawers pinned top and bottom: to
+  crop one tightly, release `bottom` and the body's `flex` to measure its natural height.
+- **A geometric check is what makes "callout lines never overlap" true.** Ordering labels like
+  their anchors prevents leader crossings, but leaders still ran through other highlighted
+  elements and numbers covered heading text; the check in `docs/handbook/layout.js` found 17
+  such cases that looked fine at a glance, and the build refuses to print until it passes.
 - **Postgres reads `POSTGRES_PASSWORD` only when the data volume is first created.** Changing
   the superuser password in the env file afterwards does nothing; change it inside the database
   first. App-role passwords are different: `migrate` re-runs role bootstrap, which resets them.

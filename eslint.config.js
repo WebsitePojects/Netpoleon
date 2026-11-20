@@ -10,6 +10,7 @@ export default defineConfig(
     '**/dist/**',
     '**/node_modules/**',
     '**/coverage/**',
+    '**/build/**',
     '.claude/**',
     '.impeccable/**',
   ]),
@@ -46,6 +47,16 @@ export default defineConfig(
   {
     files: ['apps/web/e2e/**/*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  // The handbook: Node build scripts with Playwright callbacks, and layout.js, which runs in
+  // the page being printed.
+  {
+    files: ['docs/handbook/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
+    files: ['docs/handbook/layout.js'],
+    languageOptions: { globals: globals.browser },
   },
   // The console: hooks must be called unconditionally and their dependencies listed.
   {
