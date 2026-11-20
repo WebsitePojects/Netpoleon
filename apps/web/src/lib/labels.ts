@@ -1,9 +1,11 @@
-import type {
-  AlertKind,
-  AssetStatus,
-  ConditionGrade,
-  MovementType,
-  TransactionStage,
+import {
+  ORG_TYPES,
+  type AlertKind,
+  type AssetStatus,
+  type ConditionGrade,
+  type MovementType,
+  type OrgType,
+  type TransactionStage,
 } from '@wms/contracts';
 
 /** Words the screens use for the API's values. One place, so every screen says the same. */
@@ -95,3 +97,15 @@ export const ALERT_TITLES: Readonly<Record<AlertKind, string>> = {
 export function grade(value: ConditionGrade): string {
   return value.toUpperCase();
 }
+
+export const ORG_TYPE_LABELS: Readonly<Record<OrgType, string>> = {
+  partner: 'Partner',
+  reseller: 'Reseller',
+  internal_team: 'Internal team',
+  branch: 'Branch',
+};
+
+export const ORG_TYPE_OPTIONS = ORG_TYPES.map((value) => ({
+  value,
+  label: ORG_TYPE_LABELS[value],
+}));

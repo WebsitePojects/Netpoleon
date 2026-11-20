@@ -4,11 +4,9 @@ import type {
   CreateLocationBody,
   CreateModelBody,
   LocationWithCount,
-  ListPartnersQuery,
   Model,
   ModelAvailabilityQuery,
   ModelAvailabilityResponse,
-  Partner,
 } from '@wms/contracts';
 import type { Database } from '@wms/db';
 import { AppError } from '../../errors.js';
@@ -40,12 +38,6 @@ export class CatalogService {
 
   models(ctx: RequestContext): Promise<Model[]> {
     return this.db.transaction(ctx.scope, (tx) => this.repo.listModels(tx));
-  }
-
-  partners(ctx: RequestContext, query: ListPartnersQuery): Promise<Partner[]> {
-    return this.db.transaction(ctx.scope, (tx) =>
-      this.repo.searchPartners(tx, query.q, query.limit),
-    );
   }
 
   /** The window is widened by the turnaround buffer, exactly as an approval would reserve it. */

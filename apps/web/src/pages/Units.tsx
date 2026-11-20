@@ -1,6 +1,6 @@
 import type { BulkResult, ConditionGrade, Model, Unit } from '@wms/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, Plus } from 'lucide-react';
+import { ArrowRightLeft, Plus, Tags } from 'lucide-react';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiSend, exportUrl, newIntentKey } from '../api/client.js';
@@ -183,17 +183,23 @@ export function Units() {
           search={{ placeholder: 'Search by asset code, model, or serial number…', text: () => '' }}
           filters={filters}
           onRowClick={(unit) => void navigate(`/units/${unit.code}`)}
-          batchActions={
-            can('unit.move')
+          batchActions={[
+            {
+              label: 'Print labels',
+              icon: Tags,
+              run: (rows) =>
+                void navigate(`/units/labels?codes=${rows.map((unit) => unit.code).join(',')}`),
+            },
+            ...(can('unit.move')
               ? [
                   {
                     label: 'Move to shelf',
                     icon: ArrowRightLeft,
-                    run: (rows, clear) => setMoving({ units: rows, clear }),
+                    run: (rows: Unit[], clear: () => void) => setMoving({ units: rows, clear }),
                   },
                 ]
-              : []
-          }
+              : []),
+          ]}
           exportCsv={{
             name: 'demo-units',
             header: [

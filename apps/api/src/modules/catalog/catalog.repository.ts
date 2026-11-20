@@ -6,15 +6,13 @@ import type {
   LocationWithCount,
   Model,
   ModelAvailability,
-  Partner,
 } from '@wms/contracts';
 import type { Tx } from '@wms/db';
 import { sql } from 'drizzle-orm';
 import { maybeOne, one, rows } from '../../platform/sql.js';
 
 /**
- * Reference data: categories, product models with their accessories, the location tree and
- * borrowing companies. Small tables (dozens of rows), so lists are returned whole.
+ * Reference data: categories, product models with their accessories, and the location tree. Small tables (dozens of rows), so lists are returned whole.
  */
 export class CatalogRepository {
   listCategories(tx: Tx): Promise<CategoryWithCount[]> {
@@ -111,38 +109,5 @@ export class CatalogRepository {
                      AND a.status NOT IN ('retired', 'lost')) AS "unitsTotal"
             FROM model_availability(${from}::date, ${until}::date) f`,
     );
-  }
-
-  /** Company suggestions for the request form; recently used first when there is no search. */
-  searchPartners(tx: Tx, q: string | undefined, limit: number): Promise<Partner[]> {
-    const pattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
-    return rows(
-      tx,
-      sql`SELECT o.id, o.name, o.type, o.status
-            FROM partner_orgs o
-           WHERE o.status = 'active' AND (${pattern}::text IS NULL OR o.name ILIKE ${pattern})
-           ORDER BY (SELECT max(r.created_at) FROM loan_requests r WHERE r.partner_org_id = o.id) DESC NULLS LAST,
-                    o.name
-           LIMIT ${limit}`,
-    );
-  }
-
-  /** Finds a company by name (case-insensitively) or creates it (plan R1). */
-  async findOrCreatePartner(
-    tx: Tx,
-    name: string,
-    type: string,
-  ): Promise<{ id: string; created: boolean }> {
-    const inserted = await maybeOne<{ id: string }>(
-      tx,
-      sql`INSERT INTO partner_orgs (name, type) VALUES (${name}, ${type})
-          ON CONFLICT (lower(name)) DO NOTHING RETURNING id`,
-    );
-    if (inserted) return { id: inserted.id, created: true };
-    const found = await one<{ id: string }>(
-      tx,
-      sql`SELECT id FROM partner_orgs WHERE lower(name) = lower(${name})`,
-    );
-    return { id: found.id, created: false };
   }
 }

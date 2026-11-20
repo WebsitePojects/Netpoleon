@@ -13,6 +13,7 @@ import {
   useAvailability,
   useDebounced,
   useInvalidate,
+  usePartner,
   usePartners,
   useStageCounts,
   useTransactions,
@@ -36,7 +37,7 @@ import {
   type TabItem,
 } from '../components/ui.js';
 import { addDays, daysBetween, formatDate } from '../lib/dates.js';
-import { STAGE_LABELS } from '../lib/labels.js';
+import { ORG_TYPE_OPTIONS, STAGE_LABELS } from '../lib/labels.js';
 
 type TabId = 'requests' | 'on_demo' | 'returned' | 'all';
 
@@ -339,13 +340,6 @@ const PURPOSES = [
   'Presales lab test',
 ];
 
-const ORG_TYPES: { value: OrgType; label: string }[] = [
-  { value: 'partner', label: 'Partner' },
-  { value: 'reseller', label: 'Reseller' },
-  { value: 'internal_team', label: 'Internal team' },
-  { value: 'branch', label: 'Branch' },
-];
-
 function RequestDialog({ onClose }: { onClose: () => void }) {
   const { models, settings, serverDate, categories } = useReference();
   const navigate = useNavigate();
@@ -370,6 +364,16 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
 
   const partners = usePartners(company).data ?? [];
   const known = partners.find((item) => item.name.toLowerCase() === company.trim().toLowerCase());
+  // A company on file offers the people it was dealt with before; picking one fills the rest.
+  const contacts = usePartner(known?.id ?? null).data?.contacts ?? [];
+  const pickName = (value: string) => {
+    setName(value);
+    const match = contacts.find((item) => item.name.toLowerCase() === value.trim().toLowerCase());
+    if (match) {
+      setEmail(match.email);
+      setPhone(match.phone);
+    }
+  };
   const settledFrom = useDebounced(startDate);
   const settledUntil = useDebounced(dueDate);
   const availability = useAvailability(settledFrom, settledUntil, true);
@@ -458,7 +462,7 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
             <Select
               value={companyType}
               onChange={(value) => setCompanyType(value as OrgType)}
-              options={ORG_TYPES}
+              options={ORG_TYPE_OPTIONS}
             />
           </Field>
         )}
@@ -481,12 +485,14 @@ function RequestDialog({ onClose }: { onClose: () => void }) {
             />
           </Field>
         }
-        <Field label="Borrower name">
-          <input
-            className="input"
+        <Field
+          label="Borrower name"
+          hint={contacts.length > 0 ? 'Pick someone on file to fill email and number' : undefined}
+        >
+          <SuggestInput
             value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="off"
+            suggestions={contacts.map((item) => item.name)}
+            onChange={pickName}
           />
         </Field>
         <Field label="Email">

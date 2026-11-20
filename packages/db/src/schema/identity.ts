@@ -10,6 +10,19 @@ export const partnerOrgs = pgTable('partner_orgs', {
   status: orgStatus('status').notNull().default('active'),
 });
 
+/** People at a borrowing company (0012). Requests copy these details; history never reads here. */
+export const partnerContacts = pgTable('partner_contacts', {
+  id: primaryId(),
+  ...timestamps(),
+  partnerOrgId: uuid('partner_org_id')
+    .notNull()
+    .references(() => partnerOrgs.id),
+  fullName: text('full_name').notNull(),
+  email: citext('email').notNull(),
+  phone: text('phone').notNull(),
+  lastUsedAt: timestamptz('last_used_at'),
+});
+
 export const users = pgTable('users', {
   id: primaryId(),
   ...timestamps(),

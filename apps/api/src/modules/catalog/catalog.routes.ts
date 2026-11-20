@@ -5,8 +5,6 @@ import {
   listCategoriesResponse,
   listLocationsResponse,
   listModelsResponse,
-  listPartnersQuery,
-  listPartnersResponse,
   modelAvailabilityQuery,
   modelAvailabilityResponse,
 } from '@wms/contracts';
@@ -78,11 +76,6 @@ export function catalogRoutes(service: CatalogService, guard: Guard): FastifyPlu
       async (request) => service.availability(guard.require(request), request.query),
     );
 
-    app.get(
-      '/partners',
-      { schema: { querystring: listPartnersQuery, response: { 200: listPartnersResponse } } },
-      async (request) => service.partners(guard.require(request), request.query),
-    );
     done();
   };
 }

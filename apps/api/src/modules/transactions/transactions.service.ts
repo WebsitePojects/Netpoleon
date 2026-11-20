@@ -23,7 +23,7 @@ import { CSV_ROW_LIMIT, offsetOf } from '../../platform/http.js';
 import { idempotent, type Outcome } from '../../platform/idempotency.js';
 import { enqueue } from '../../platform/outbox.js';
 import type { SettingsService } from '../../platform/settings.js';
-import type { CatalogRepository } from '../catalog/catalog.repository.js';
+import type { PartnersRepository } from '../partners/partners.repository.js';
 import type { UnitsRepository } from '../units/units.repository.js';
 import type {
   RequestState,
@@ -50,7 +50,7 @@ export class TransactionsService {
     private readonly db: Database,
     private readonly repo: TransactionsRepository,
     private readonly units: UnitsRepository,
-    private readonly catalog: CatalogRepository,
+    private readonly partners: PartnersRepository,
     private readonly settings: SettingsService,
     private readonly audit: AuditWriter,
   ) {}
@@ -114,10 +114,19 @@ export class TransactionsService {
         if (!model) throw new AppError(422, 'model_not_found', 'That product model does not exist');
         if (!model.bookable)
           throw new AppError(422, 'not_bookable', 'That model is not available to book');
+        // Share-locked either way, so an archive of this company waits for the request.
         const company =
           'id' in body.company
-            ? { id: body.company.id, created: false }
-            : await this.catalog.findOrCreatePartner(tx, body.company.name, body.company.type);
+            ? await this.partners.share(tx, body.company.id)
+            : await this.partners.findOrCreate(tx, body.company.name, body.company.type);
+        if (!company) throw new AppError(422, 'company_not_found', 'That company does not exist');
+        if (company.status === 'archived') {
+          throw new AppError(
+            422,
+            'company_archived',
+            `${company.name} is archived; restore it in Partners before filing for it`,
+          );
+        }
         const created = await this.repo.createRequest(tx, {
           year: today.slice(0, 4),
           partnerOrgId: company.id,
@@ -129,6 +138,7 @@ export class TransactionsService {
           endCustomer: body.endCustomer,
         });
         await this.repo.addItem(tx, created.id, company.id, body.modelId, body.quantity);
+        await this.partners.rememberContact(tx, company.id, body.contact);
         await this.audit.record(tx, ctx, {
           action: 'transaction.create',
           targetType: 'loan_request',

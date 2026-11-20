@@ -75,6 +75,7 @@ function where(filters: ExportUnitsQuery): SQL {
   }
   if (filters.category) parts.push(sql`c.code = ${filters.category}`);
   if (filters.location) parts.push(sql`a.current_location_id = ${filters.location}`);
+  if (filters.codes) parts.push(sql`a.asset_code IN ${filters.codes}`);
   return sql.join(parts, sql` AND `);
 }
 

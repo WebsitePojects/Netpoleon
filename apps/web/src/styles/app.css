@@ -3435,6 +3435,270 @@ tr.is-late td:first-child,
   background: var(--brand);
 }
 
+/* ── Help centre ────────────────────────────────────────────────────────── */
+.help-search {
+  max-width: 640px;
+}
+.help-layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .help-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+.help-guide {
+  overflow: hidden;
+}
+.help-guide h3 {
+  margin: 0;
+}
+.help-guide h3 button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.help-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--accent);
+  transition:
+    background 220ms var(--ease-ui),
+    color 220ms var(--ease-ui),
+    transform 320ms var(--ease-spring);
+}
+.help-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.help-guide[data-open='true'] .help-icon {
+  background: var(--primary);
+  color: var(--primary-ink);
+  transform: scale(1.06);
+}
+.help-head {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.help-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: var(--t-body);
+}
+.help-step {
+  padding: 1px 7px;
+  border-radius: var(--r-chip);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.help-summary {
+  font-size: var(--t-small);
+  color: var(--muted);
+}
+.help-chevron {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--muted);
+  transition: transform 320ms var(--ease-spring);
+}
+.help-guide[data-open='true'] .help-chevron {
+  transform: rotate(180deg);
+}
+/* Height animates through grid rows, so the body opens to its real height without measuring. */
+.help-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 360ms var(--ease-reveal);
+}
+.help-guide[data-open='true'] .help-body {
+  grid-template-rows: 1fr;
+}
+.help-body > div {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 16px 0 70px;
+}
+.help-guide[data-open='true'] .help-body > div {
+  padding-bottom: 16px;
+}
+.help-body ol {
+  list-style: decimal;
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: var(--t-body);
+  line-height: 1.5;
+}
+.help-body li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+.faq {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+.faq dt {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.faq dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: 1.5;
+}
+@media (max-width: 639px) {
+  .help-body > div {
+    padding-left: 16px;
+  }
+}
+
+/* ── Label sheet ─────────────────────────────────────────────────────── */
+.labels-layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .labels-layout {
+    grid-template-columns: 340px 1fr;
+  }
+}
+.label-preview {
+  padding: 18px;
+  min-height: 320px;
+  overflow: auto;
+}
+/* Labels are laid out in real millimetres so the preview matches the printed sheet. */
+.label-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--label-w));
+  gap: 3mm;
+  justify-content: start;
+  --label-w: 50mm;
+  --label-h: 25mm;
+}
+.label-sheet[data-size='70x35'] {
+  --label-w: 70mm;
+  --label-h: 35mm;
+}
+.label-sheet[data-size='100x50'] {
+  --label-w: 100mm;
+  --label-h: 50mm;
+}
+.asset-label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2mm;
+  align-items: center;
+  width: var(--label-w);
+  height: var(--label-h);
+  padding: 1.5mm 2mm;
+  border: 1px dashed #b5b5b5;
+  border-radius: 1.5mm;
+  background: #fff;
+  color: #111;
+  overflow: hidden;
+  break-inside: avoid;
+}
+.asset-label-qr svg {
+  display: block;
+  width: calc(var(--label-h) - 3mm);
+  height: calc(var(--label-h) - 3mm);
+}
+.asset-label-text {
+  display: grid;
+  gap: 0.4mm;
+  min-width: 0;
+  font-size: calc(var(--label-h) * 0.105);
+  line-height: 1.15;
+}
+.asset-label-text strong {
+  /* Sized so the longest code (NTP-SRV-00001) stays on one line on the smallest label. */
+  font-size: calc(var(--label-h) * 0.11);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.asset-label-text span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #444;
+}
+.barcode {
+  display: block;
+  width: 100%;
+  height: calc(var(--label-h) * 0.26);
+  margin-top: 0.6mm;
+}
+.code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.code-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  border-radius: var(--r-chip);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--t-small);
+}
+.code-chips button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--muted);
+  transition:
+    background 140ms var(--ease-ui),
+    color 140ms var(--ease-ui);
+}
+.code-chips button:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.code-chips svg {
+  width: 13px;
+  height: 13px;
+}
+.code-chips li[data-missing] {
+  border-style: dashed;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 @media print {
   .sidebar,
   .header,
@@ -3445,6 +3709,26 @@ tr.is-late td:first-child,
   }
   .shell {
     display: block;
+  }
+  /* Print the sheet at true size, with nothing around it. */
+  body:has(.label-sheet) {
+    background: #fff;
+  }
+  body:has(.label-sheet) .page > *:not(.labels-layout),
+  body:has(.label-sheet) .labels-layout > *:not(.label-preview) {
+    display: none !important;
+  }
+  .labels-layout {
+    display: block;
+  }
+  .label-preview {
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: none;
+  }
+  .asset-label {
+    border-color: #ddd;
   }
 }
 

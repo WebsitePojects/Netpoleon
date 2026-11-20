@@ -6,7 +6,11 @@ import { Borrow } from './pages/Borrow.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Inspection } from './pages/Inspection.js';
 import { ForgotPassword, Login, SetPassword } from './pages/Login.js';
+import { Help } from './pages/Help.js';
+import { Labels } from './pages/Labels.js';
 import { NotFound } from './pages/NotFound.js';
+import { PartnerDetail } from './pages/PartnerDetail.js';
+import { Partners } from './pages/Partners.js';
 import { Profile } from './pages/Profile.js';
 import { Reports } from './pages/Reports.js';
 import { Settings } from './pages/Settings.js';
@@ -38,13 +42,17 @@ export function App() {
       <Route element={<Protected />}>
         <Route index element={<Dashboard />} />
         <Route path="units" element={<Units />} />
+        <Route path="units/labels" element={<Labels />} />
         <Route path="units/:code" element={<UnitDetail />} />
         <Route path="borrow" element={<Borrow />} />
         <Route path="borrow/:number" element={<TransactionDetail />} />
         <Route path="inspection" element={<Inspection />} />
         <Route path="reports" element={<Reports />} />
         <Route path="alerts" element={<Alerts />} />
+        <Route path="partners" element={<Partners />} />
+        <Route path="partners/:id" element={<PartnerDetail />} />
         <Route path="users" element={<Users />} />
+        <Route path="help" element={<Help />} />
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<Profile />} />
         <Route path="*" element={<NotFound />} />

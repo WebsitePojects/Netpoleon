@@ -38,6 +38,8 @@ const CONSOLE_INDEXES = [
   ],
   ['loan_requests_contact_name_trgm_idx', 'USING gin (contact_name gin_trgm_ops)'],
   ['partner_orgs_name_trgm_idx', 'USING gin (name gin_trgm_ops)'],
+  ['partner_contacts_org_email_key', 'USING btree (partner_org_id, email)'],
+  ['loan_items_open_org_idx', 'USING btree (partner_org_id) WHERE (returned_at IS NULL)'],
   ['assets_updated_idx', 'USING btree (updated_at DESC, id DESC)'],
   ['assets_status_updated_idx', 'USING btree (status, updated_at DESC, id DESC)'],
   ['loan_requests_created_idx', 'USING btree (created_at DESC, id DESC)'],

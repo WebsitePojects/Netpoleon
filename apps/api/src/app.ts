@@ -11,6 +11,9 @@ import { AuthService } from './modules/auth/auth.service.js';
 import { CatalogRepository } from './modules/catalog/catalog.repository.js';
 import { catalogRoutes } from './modules/catalog/catalog.routes.js';
 import { CatalogService } from './modules/catalog/catalog.service.js';
+import { PartnersRepository } from './modules/partners/partners.repository.js';
+import { partnersRoutes } from './modules/partners/partners.routes.js';
+import { PartnersService } from './modules/partners/partners.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { HealthService } from './modules/health/health.service.js';
 import { InspectionsRepository } from './modules/inspections/inspections.repository.js';
@@ -82,13 +85,15 @@ export async function buildApp({ config, db, logger }: AppDeps): Promise<Fastify
 
   const auth = new AuthService(db, new AuthRepository(), catalogRepo, sessions, settings, audit);
   const catalog = new CatalogService(db, catalogRepo, settings, audit);
+  const partnersRepo = new PartnersRepository();
+  const partners = new PartnersService(db, partnersRepo, sessions, audit);
   const unitsRepo = new UnitsRepository();
   const units = new UnitsService(db, unitsRepo, settings, audit);
   const transactions = new TransactionsService(
     db,
     new TransactionsRepository(),
     unitsRepo,
-    catalogRepo,
+    partnersRepo,
     settings,
     audit,
   );
@@ -109,6 +114,7 @@ export async function buildApp({ config, db, logger }: AppDeps): Promise<Fastify
     async (api) => {
       await api.register(authRoutes(auth, guard));
       await api.register(catalogRoutes(catalog, guard));
+      await api.register(partnersRoutes(partners, guard));
       await api.register(unitsRoutes(units, guard));
       await api.register(transactionsRoutes(transactions, guard));
       await api.register(inspectionsRoutes(inspections, guard));

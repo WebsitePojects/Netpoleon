@@ -10,6 +10,8 @@ import type {
   Movement,
   Overview,
   Partner,
+  PartnerDetail,
+  PartnerSummary,
   SettingsResponse,
   StageCounts,
   Transaction,
@@ -75,6 +77,8 @@ export const keys = {
   categories: ['categories'] as const,
   locations: ['locations'] as const,
   partners: (q: string) => ['partners', q] as const,
+  partnerDirectory: (params: object) => ['partners', 'directory', params] as const,
+  partner: (id: string) => ['partner', id] as const,
   availability: (from: string, until: string) => ['availability', from, until] as const,
 };
 
@@ -275,6 +279,25 @@ export function usePartners(q: string) {
     queryFn: ({ signal }) =>
       apiGet<Partner[]>('/partners', { q: settled || undefined, limit: 10 }, signal),
     staleTime: STALE.list,
+  });
+}
+
+/** The partner directory: every company with its activity (Partners page). */
+export function usePartnerDirectory(params: Record<string, unknown>) {
+  return useQuery({
+    queryKey: keys.partnerDirectory(params),
+    queryFn: ({ signal }) => apiGet<Paged<PartnerSummary>>('/partners/directory', params, signal),
+    staleTime: STALE.list,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function usePartner(id: string | null) {
+  return useQuery({
+    queryKey: keys.partner(id ?? ''),
+    queryFn: ({ signal }) => apiGet<PartnerDetail>(`/partners/${id}`, undefined, signal),
+    staleTime: STALE.list,
+    enabled: id !== null,
   });
 }
 

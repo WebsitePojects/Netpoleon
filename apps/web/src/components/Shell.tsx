@@ -2,10 +2,12 @@ import {
   ArrowLeftRight,
   Bell,
   Boxes,
+  Building2,
   ChartColumn,
   ChevronDown,
   ClipboardCheck,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Monitor,
@@ -54,8 +56,10 @@ const NAV: NavItem[] = [
   { to: '/borrow', label: 'Borrow / Return', icon: ArrowLeftRight },
   { to: '/inspection', label: 'Inspection', icon: ClipboardCheck },
   { to: '/reports', label: 'Reports', icon: ChartColumn },
+  { to: '/partners', label: 'Partners', icon: Building2 },
   { to: '/users', label: 'Users', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/help', label: 'Help', icon: LifeBuoy },
 ];
 
 /** The four screens used every day; the fifth tab-bar slot opens the full menu. */

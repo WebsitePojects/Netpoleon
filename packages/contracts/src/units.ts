@@ -48,6 +48,9 @@ export const unitSchema = z.object({
 export type Unit = z.infer<typeof unitSchema>;
 
 export const UNIT_SORTS = ['code', 'model', 'status', 'location', 'updatedAt'] as const;
+/** One label sheet; also the most a single `codes` filter may name. */
+export const MAX_LABEL_CODES = 100;
+
 const unitFilters = {
   q: searchSchema.optional(),
   status: queryList(ASSET_STATUSES).optional(),
@@ -56,6 +59,13 @@ const unitFilters = {
     .regex(/^[A-Z]{2,4}$/)
     .optional(),
   location: idSchema.optional(),
+  /** Exact asset codes, for the label sheet: `codes=NTP-SW-00001,NTP-FW-00002`. */
+  codes: z
+    .union([z.string(), z.array(z.string()).min(1).max(MAX_LABEL_CODES)])
+    .transform((raw) => (Array.isArray(raw) ? raw : raw.split(',')))
+    .pipe(z.array(assetCodeSchema).min(1).max(MAX_LABEL_CODES))
+    .transform((codes) => [...new Set(codes)])
+    .optional(),
 };
 /** Retired and lost units are left out unless the status filter asks for them. */
 export const listUnitsQuery = pageQuery(UNIT_SORTS).extend(unitFilters);
